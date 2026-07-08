@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+<title>RushPulse — AEPi Recruitment CRM</title>
+<style>
+:root{
+  --bg:#0a0a0c; --panel:#141417; --panel2:#18181b; --card:#1a1a1e;
+  --border:#26262a; --border-hover:#38383f; --text:#f1f1f3; --dim:#9a9aa3; --dimmer:#68686f;
+  --indigo:#4f46e5; --indigo2:#6366f1; --violet:#7c3aed; --green:#10b981; --amber:#f59e0b; --red:#ef4444;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+body{min-height:100vh;}
+::-webkit-scrollbar{height:8px;width:8px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#2a2a30;border-radius:8px;}
+button{font-family:inherit;}
+a{color:inherit;}
+.hidden{display:none !important;}
+
+/* app shell: stacked on mobile, sidebar + content on desktop */
+#app-shell{display:flex;flex-direction:column;min-height:100vh;}
+@media(min-width:900px){#app-shell{flex-direction:row;}}
+
+/* sidebar (the "control panel") */
+#sidebar{position:sticky;top:0;z-index:40;background:rgba(10,10,12,.94);backdrop-filter:blur(8px);border-bottom:1px solid #1a1a1d;}
+.sidebar-inner{padding:12px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;}
+@media(min-width:900px){
+  #sidebar{width:230px;flex:0 0 230px;height:100vh;position:sticky;top:0;border-bottom:none;border-right:1px solid #1a1a1d;}
+  .sidebar-inner{flex-direction:column;align-items:stretch;height:100%;padding:18px 14px;gap:0;flex-wrap:nowrap;}
+}
+.brand{display:flex;align-items:center;gap:8px;}
+.brand-logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--indigo),var(--violet));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;}
+.brand-name{font-weight:600;line-height:1.1;font-size:15px;}
+.brand-sub{font-size:11px;color:var(--dimmer);line-height:1.1;}
+@media(min-width:900px){.brand{margin-bottom:20px;}}
+
+.tabs{display:flex;gap:4px;background:#141416;border-radius:12px;padding:4px;overflow-x:auto;order:3;flex:1 1 100%;}
+.tab-btn{border:none;background:transparent;color:var(--dim);font-weight:500;font-size:13px;padding:7px 12px;border-radius:9px;cursor:pointer;white-space:nowrap;transition:.15s;}
+.tab-btn.active{background:var(--indigo);color:#fff;}
+.tab-btn:not(.active):hover{color:var(--text);}
+@media(min-width:900px){
+  .tabs{flex-direction:column;background:none;padding:0;gap:2px;order:0;overflow-x:visible;}
+  .tab-btn{text-align:left;padding:9px 12px;width:100%;}
+}
+
+.header-actions{display:flex;align-items:center;gap:8px;order:2;margin-left:auto;}
+@media(min-width:900px){
+  .header-actions{flex-direction:column;align-items:stretch;margin-left:0;margin-top:auto;padding-top:16px;order:0;gap:8px;}
+  .header-actions select{width:100%;}
+}
+
+/* buttons & inputs */
+.btn{border:none;border-radius:10px;font-weight:500;font-size:13px;padding:8px 14px;cursor:pointer;transition:.15s;}
+.btn-primary{background:var(--indigo);color:#fff;}
+.btn-primary:hover{background:var(--indigo2);}
+.btn-ghost{background:#1f1f24;color:var(--text);border:1px solid var(--border);}
+.btn-ghost:hover{background:#28282e;}
+.btn-danger{background:rgba(239,68,68,.15);color:#fca5a5;}
+.btn-danger:hover{background:rgba(239,68,68,.25);}
+.btn-sm{padding:5px 10px;font-size:12px;}
+.btn-xs{padding:2px 4px;font-size:11px;background:none;border:none;color:var(--dimmer);cursor:pointer;}
+.btn-xs:hover{color:var(--text);}
+.input,select,textarea{width:100%;background:#0f0f11;border:1px solid #303035;border-radius:9px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;}
+.input:focus,select:focus,textarea:focus{border-color:var(--indigo2);box-shadow:0 0 0 3px rgba(99,102,241,.25);}
+textarea{resize:vertical;min-height:44px;}
+.field{display:block;margin-bottom:11px;}
+.field-label{display:block;font-size:11px;font-weight:600;color:var(--dim);margin-bottom:4px;}
+
+/* badges */
+.badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:500;background:#232327;color:#c7c7cf;}
+.badge-indigo{background:rgba(99,102,241,.15);color:#a5b4fc;}
+.badge-green{background:rgba(16,185,129,.15);color:#6ee7b7;}
+.badge-amber{background:rgba(245,158,11,.15);color:#fcd34d;}
+.badge-red{background:rgba(239,68,68,.15);color:#fca5a5;}
+
+#main-wrap{flex:1;min-width:0;padding-bottom:40px;}
+main{max-width:1700px;margin:0 auto;padding:18px 16px 0;}
+
+/* scouting */
+.filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:center;}
+.filter-bar .input{width:auto;min-width:170px;flex:1 1 170px;max-width:260px;}
+.filter-bar select{width:auto;}
+.columns-grid{display:grid;grid-template-columns:1fr;gap:14px;}
+@media(min-width:640px){.columns-grid{grid-template-columns:repeat(2,1fr);}}
+@media(min-width:1180px){.columns-grid{grid-template-columns:repeat(4,1fr);}}
+.column.dead{opacity:.85;}
+.p-card.dead{opacity:.62;}
+.column{background:rgba(255,255,255,.015);border:1px solid #1b1b1e;border-radius:16px;padding:12px;}
+.column-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 4px;}
+.column-title{font-weight:600;font-size:13px;color:#d0d0d6;}
+.column-empty{font-size:12px;color:var(--dimmer);font-style:italic;padding:2px 4px;}
+.card-list{display:flex;flex-direction:column;gap:10px;min-height:50px;}
+
+.p-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:11px;transition:border-color .15s;cursor:pointer;}
+.p-card:hover{border-color:var(--border-hover);}
+.p-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+.p-card-id{display:flex;align-items:center;gap:8px;min-width:0;}
+.avatar{width:30px;height:30px;flex-shrink:0;border-radius:999px;background:#232327;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#c7c7cf;}
+.p-name{font-weight:500;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.p-ig{font-size:11px;color:#a5b4fc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:none;display:inline-block;}
+.p-ig:hover{text-decoration:underline;}
+.p-badges{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
+.p-vouch{font-size:11px;color:var(--dimmer);margin-top:6px;}
+.p-vouch span{color:#d0d0d6;}
+.p-details{margin-top:8px;border-top:1px solid var(--border);padding-top:8px;font-size:12px;color:var(--dim);}
+.p-details p{white-space:pre-wrap;margin:0 0 6px;}
+.p-details .row{margin-bottom:4px;}
+.p-actions{display:flex;align-items:center;gap:6px;margin-top:10px;}
+
+/* rush tracker */
+.quick-log-btn{position:sticky;top:66px;z-index:30;width:100%;background:linear-gradient(90deg,var(--indigo),var(--violet));color:#fff;font-weight:600;font-size:14.5px;padding:13px;border:none;border-radius:16px;cursor:pointer;box-shadow:0 8px 24px -8px rgba(79,70,229,.6);margin-bottom:16px;}
+@media(min-width:900px){.quick-log-btn{top:0;}}
+.quick-log-btn:hover{filter:brightness(1.08);}
+.kanban-wrap{display:flex;gap:10px;overflow-x:auto;padding-bottom:16px;align-items:flex-start;}
+.kanban-col{flex:1 1 165px;min-width:150px;background:rgba(255,255,255,.015);border:1px solid #1b1b1e;border-radius:16px;padding:10px;transition:outline .1s;}
+.kanban-col.drop-hover{outline:2px dashed var(--indigo2);outline-offset:-4px;}
+.k-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;cursor:grab;transition:border-color .15s;}
+.k-card:hover{border-color:#4f46e588;}
+.k-card.dragging{opacity:.35;}
+.k-card-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.k-name{font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.k-badges{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}
+
+.star-row{display:inline-flex;gap:1px;}
+.star{background:none;border:none;padding:0;line-height:1;font-size:16px;color:#3a3a40;cursor:pointer;}
+.star.filled{color:#fbbf24;}
+.star.static{cursor:default;}
+.star-sm{font-size:12px;}
+
+/* modal */
+.modal-overlay{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.7);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:14px;}
+.modal{background:var(--panel);border:1px solid #2a2a2f;border-radius:18px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 30px 80px -20px rgba(0,0,0,.7);}
+.modal.wide{max-width:760px;}
+.modal-header{position:sticky;top:0;background:var(--panel);display:flex;align-items:center;justify-content:space-between;padding:15px 20px;border-bottom:1px solid var(--border);z-index:2;}
+.modal-header h3{margin:0;font-size:16px;font-weight:600;}
+.modal-close{background:none;border:none;color:var(--dimmer);font-size:22px;cursor:pointer;line-height:1;padding:2px 6px;}
+.modal-close:hover{color:var(--text);}
+.modal-body{padding:18px 20px;}
+.form-grid{display:grid;grid-template-columns:1fr;gap:0 14px;}
+@media(min-width:640px){.form-grid{grid-template-columns:1fr 1fr;}}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;padding-top:10px;}
+.modal-footer.between{justify-content:space-between;}
+.section-divider{border-top:1px solid var(--border);margin:14px 0;padding-top:14px;}
+.section-title{font-size:11px;font-weight:600;color:var(--dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em;}
+.mini-list{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;max-height:130px;overflow-y:auto;}
+.note-item{background:#0f0f12;border-radius:9px;padding:7px 10px;font-size:13px;}
+.note-meta{font-size:10px;color:var(--dimmer);margin-top:3px;}
+.inline-add{display:flex;gap:8px;}
+.empty-note{font-size:12px;color:var(--dimmer);font-style:italic;}
+.mode-toggle{display:flex;gap:8px;margin-bottom:12px;}
+.mode-toggle button{flex:1;padding:7px;border-radius:10px;font-size:13px;font-weight:500;border:none;cursor:pointer;background:#1f1f24;color:var(--dim);}
+.mode-toggle button.active{background:var(--indigo);color:#fff;}
+
+/* deliberations */
+.split-pane{display:grid;grid-template-columns:1fr;gap:14px;}
+@media(min-width:860px){.split-pane{grid-template-columns:270px 1fr;}}
+.pnm-list{display:flex;flex-direction:column;gap:8px;}
+@media(min-width:860px){.pnm-list{max-height:72vh;overflow-y:auto;padding-right:4px;}}
+.pnm-list-item{text-align:left;width:100%;padding:9px 11px;border-radius:12px;border:1px solid var(--border);background:var(--card);cursor:pointer;font:inherit;color:inherit;}
+.pnm-list-item:hover{border-color:var(--border-hover);}
+.pnm-list-item.selected{background:rgba(79,70,229,.15);border-color:var(--indigo);}
+.pnm-list-row{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+.pnm-list-meta{font-size:11px;color:var(--dimmer);margin-top:4px;}
+.dossier{background:rgba(255,255,255,.015);border:1px solid #1b1b1e;border-radius:18px;padding:20px;}
+.dossier-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;}
+.avatar-lg{width:54px;height:54px;border-radius:999px;background:#232327;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#c7c7cf;flex-shrink:0;}
+.dossier-name{font-size:19px;font-weight:600;}
+.dossier-sub{font-size:13px;color:var(--dimmer);}
+.dossier-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;font-size:13px;margin-bottom:14px;}
+.dossier-grid .k{color:var(--dimmer);}
+.vote-row{display:flex;gap:8px;margin-bottom:10px;}
+.vote-btn{flex:1;padding:9px;border-radius:10px;font-weight:600;font-size:13px;border:none;cursor:pointer;background:#1f1f24;}
+.vote-btn.yes{color:#6ee7b7;} .vote-btn.yes.active{background:var(--green);color:#04140d;}
+.vote-btn.discuss{color:#fcd34d;} .vote-btn.discuss.active{background:var(--amber);color:#241a02;}
+.vote-btn.no{color:#fca5a5;} .vote-btn.no.active{background:var(--red);color:#210505;}
+.vote-bar{height:12px;border-radius:999px;overflow:hidden;display:flex;background:#232327;}
+.vote-seg-yes{background:var(--green);} .vote-seg-discuss{background:var(--amber);} .vote-seg-no{background:var(--red);}
+.vote-meta{display:flex;justify-content:space-between;font-size:11px;margin-top:6px;}
+.vote-meta .y{color:#6ee7b7;} .vote-meta .d{color:#fcd34d;} .vote-meta .n{color:#fca5a5;}
+.vote-total{font-size:11px;color:var(--dimmer);margin-top:4px;}
+.voter-banner{background:rgba(245,158,11,.1);border:1px solid rgba(217,119,6,.3);color:#fcd34d;font-size:12px;border-radius:10px;padding:9px 12px;margin-bottom:14px;}
+.showall-label{margin-left:auto;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px;}
+
+/* roster */
+.roster-wrap{max-width:420px;}
+.roster-row{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:6px;}
+.roster-hint{font-size:12px;color:var(--dimmer);margin-bottom:14px;}
+
+/* toast */
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(20px);z-index:100;padding:10px 18px;border-radius:12px;color:#fff;font-size:13.5px;font-weight:500;box-shadow:0 10px 30px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:.2s;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.toast-info{background:var(--indigo);}
+#toast.toast-success{background:#0d9488;}
+#toast.toast-error{background:#dc2626;}
+
+.empty-state{font-size:13px;color:var(--dimmer);font-style:italic;padding:8px 2px;}
+</style>
+</head>
+<body>
+<div id="app-shell">
+  <aside id="sidebar"></aside>
+  <div id="main-wrap">
+    <main id="tab-content"></main>
+  </div>
+</div>
+<div id="modal-root"></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+/* =================================================================
+   Constants & tiny helpers
+================================================================= */
+var OUTREACH_STATUSES = ["Uncontacted", "Contacted", "Warm Response"];
+var NOT_INTERESTED = "Not Interested";
+var SCOUTING_COLUMNS = OUTREACH_STATUSES.concat([NOT_INTERESTED]);
+var STAGES = ["Discovered", "Attended Event", "Interview", "Invite Only", "Bid Extended", "Bid Accepted", "Dropped"];
+var ADVANCED_STAGES = ["Interview", "Bid Extended", "Bid Accepted"];
+var STORAGE_KEY = "rushpulse_data_v1";
+
+function uid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "id-" + Math.random().toString(36).slice(2) + Date.now();
+}
+function today() { return new Date().toISOString().slice(0, 10); }
+function normalizeIG(s) { return (s || "").trim().replace(/^@/, "").toLowerCase(); }
+function initials(name) {
+  return (name || "?").split(" ").filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join("");
+}
+function esc(s) {
+  var d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+
+/* =================================================================
+   Tiny DOM helper (no framework, no build step, no CDN dependency)
+================================================================= */
+function el(tag, props) {
+  var node = document.createElement(tag);
+  var children = Array.prototype.slice.call(arguments, 2);
+  if (props) {
+    for (var k in props) {
+      if (!Object.prototype.hasOwnProperty.call(props, k)) continue;
+      var v = props[k];
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") node.className = v;
+      else if (k === "style" && typeof v === "object") { for (var s in v) node.style[s] = v[s]; }
+      else if (k.indexOf("on") === 0 && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+      else if (k === "value" || k === "checked" || k === "disabled" || k === "selected") node[k] = v;
+      else node.setAttribute(k, v === true ? "" : v);
+    }
+  }
+  function append(child) {
+    if (child === null || child === undefined || child === false) return;
+    if (Array.isArray(child)) { child.forEach(append); return; }
+    if (typeof child === "string" || typeof child === "number") node.appendChild(document.createTextNode(String(child)));
+    else if (child instanceof Node) node.appendChild(child);
+  }
+  children.forEach(append);
+  return node;
+}
+function clearNode(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+function mount(container) {
+  clearNode(container);
+  function append(c) {
+    if (c === null || c === undefined || c === false) return;
+    if (Array.isArray(c)) { c.forEach(append); return; }
+    container.appendChild(c);
+  }
+  Array.prototype.slice.call(arguments, 1).forEach(append);
+}
+function badge(text, tone) {
+  return el("span", { class: "badge" + (tone ? " badge-" + tone : "") }, text);
+}
+function igLink(ig, className) {
+  var handle = normalizeIG(ig);
+  if (!handle) return null;
+  return el("a", {
+    class: className || "p-ig", href: "https://instagram.com/" + handle, target: "_blank", rel: "noopener noreferrer",
+    onclick: function (e) { e.stopPropagation(); }
+  }, "@" + handle);
+}
+function igFieldWithLink(inputNode) {
+  var link = el("button", {
+    type: "button", class: "btn-xs", style: { marginLeft: "4px", fontSize: "12px" },
+    onclick: function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var handle = normalizeIG(inputNode.value);
+      if (handle) window.open("https://instagram.com/" + handle, "_blank", "noopener,noreferrer");
+    }
+  }, "View ↗");
+  return el("div", { style: { display: "flex", alignItems: "center", gap: "2px" } }, inputNode, link);
+}
+function starRow(value, onChange, small) {
+  var row = el("div", { class: "star-row" });
+  for (var n = 1; n <= 5; n++) {
+    (function (n) {
+      var btn = el("button", {
+        type: "button",
+        class: "star" + (small ? " star-sm" : "") + (n <= value ? " filled" : "") + (onChange ? "" : " static"),
+        onclick: onChange ? function (e) { e.stopPropagation(); onChange(n === value ? 0 : n); } : null
+      }, "★");
+      row.appendChild(btn);
+    })(n);
+  }
+  return row;
+}
+var YES_NO_TBD = ["TBD", "Yes", "No"];
+function yesNoTbdSelect(value, onChange) {
+  return el("select", { class: "input", onchange: onChange ? function (e) { onChange(e.target.value); } : null },
+    YES_NO_TBD.map(function (v) { return el("option", { value: v, selected: (value || "TBD") === v }, v); })
+  );
+}
+function statusBadgeTone(v) { return v === "Yes" ? "green" : v === "No" ? null : "amber"; }
+
+/* =================================================================
+   Persistence layer — the only two functions that touch storage.
+   Swap these for real API/Supabase calls later without touching UI code.
+================================================================= */
+function defaultData() { return { prospects: [], pnms: [], brothers: [], currentVoter: "" }; }
+function loadData() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultData();
+    var parsed = JSON.parse(raw);
+    var d = defaultData();
+    for (var k in d) if (parsed[k] !== undefined) d[k] = parsed[k];
+    return d;
+  } catch (e) { console.error("RushPulse: failed to load data", e); return defaultData(); }
+}
+function saveData(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+  catch (e) { console.error("RushPulse: failed to save data", e); }
+}
+
+/* =================================================================
+   Global state
+================================================================= */
+var state = {
+  data: loadData(),
+  tab: "scouting",
+  scoutingSearch: "", scoutingHometown: "", scoutingSchool: "", scoutingMajor: "",
+  prospectModal: null,      // { mode:'add'|'edit', prospect }
+  quickLogOpen: false,
+  quickLogMode: "existing",
+  pnmDetailId: null,
+  showAllStages: false,
+  selectedPnmId: null,
+  toastTimer: null
+};
+function persist() { saveData(state.data); }
+
+/* =================================================================
+   Business logic (framework-agnostic, mutates state.data)
+================================================================= */
+function igExists(ig, excludeId) {
+  var norm = normalizeIG(ig);
+  if (!norm) return null;
+  var all = state.data.prospects.concat(state.data.pnms);
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].id !== excludeId && normalizeIG(all[i].instagram) === norm) return all[i];
+  }
+  return null;
+}
+
+function addProspect(fields) {
+  if (fields.instagram) {
+    var dup = igExists(fields.instagram);
+    if (dup) { showToast("@" + normalizeIG(fields.instagram) + " already exists as " + dup.name, "error"); return false; }
+  }
+  var p = {
+    id: uid(), name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "",
+    major: "", classYear: "", vouchedBy: "", outreachStatus: "Uncontacted", notes: "",
+    jewish: "TBD", legacy: "TBD", connections: "",
+    createdAt: today(), promotedToPnm: null
+  };
+  for (var k in fields) p[k] = fields[k];
+  state.data.prospects.unshift(p);
+  persist();
+  showToast("Added " + p.name + " to Scouting", "success");
+  return true;
+}
+function editProspect(id, patch) {
+  var p = state.data.prospects.find(function (x) { return x.id === id; });
+  if (!p) return;
+  for (var k in patch) p[k] = patch[k];
+  persist();
+}
+function deleteProspect(id) {
+  state.data.prospects = state.data.prospects.filter(function (p) { return p.id !== id; });
+  persist();
+}
+function promoteToPNM(prospectId) {
+  var p = state.data.prospects.find(function (x) { return x.id === prospectId; });
+  if (!p) return;
+  var pnm = {
+    id: uid(), name: p.name, phone: p.phone, email: p.email, instagram: p.instagram,
+    hometown: p.hometown, highSchool: p.highSchool, major: p.major, classYear: p.classYear,
+    vouchedBy: p.vouchedBy, jewish: p.jewish || "TBD", legacy: p.legacy || "TBD", connections: p.connections || "", vibeRating: 0, stage: "Discovered",
+    eventsAttended: [], notes: p.notes ? [{ id: uid(), author: p.vouchedBy || "Scouting", text: p.notes, date: today() }] : [],
+    votes: {}, promotedFromProspectId: p.id, createdAt: p.createdAt, promotedAt: today()
+  };
+  state.data.pnms.unshift(pnm);
+  p.promotedToPnm = pnm.id;
+  persist();
+  state.tab = "tracker";
+  renderApp();
+  showToast(pnm.name + " promoted to active rush!", "success");
+}
+
+function addPnmQuick(fields) {
+  if (fields.instagram) {
+    var dup = igExists(fields.instagram);
+    if (dup && dup.stage) { showToast("@" + normalizeIG(fields.instagram) + " is already " + dup.name, "error"); return null; }
+  }
+  var pnm = {
+    id: uid(), name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "",
+    major: "", classYear: "", vouchedBy: "", jewish: "TBD", legacy: "TBD", connections: "", vibeRating: 0, stage: "Discovered",
+    eventsAttended: [], notes: [], votes: {}, promotedFromProspectId: null, createdAt: today()
+  };
+  for (var k in fields) pnm[k] = fields[k];
+  state.data.pnms.unshift(pnm);
+  persist();
+  return pnm;
+}
+function editPnm(id, patch) {
+  var p = state.data.pnms.find(function (x) { return x.id === id; });
+  if (!p) return null;
+  for (var k in patch) p[k] = patch[k];
+  persist();
+  return p;
+}
+function deletePnm(id) {
+  state.data.pnms = state.data.pnms.filter(function (p) { return p.id !== id; });
+  persist();
+}
+function movePnmStage(id, stage) { editPnm(id, { stage: stage }); }
+function addNote(id, author, text) {
+  if (!text || !text.trim()) return null;
+  var p = state.data.pnms.find(function (x) { return x.id === id; });
+  if (!p) return null;
+  var note = { id: uid(), author: author || "Anon", text: text, date: today() };
+  p.notes.push(note);
+  persist();
+  return note;
+}
+function addEvent(id, name, date) {
+  if (!name || !name.trim()) return null;
+  var p = state.data.pnms.find(function (x) { return x.id === id; });
+  if (!p) return null;
+  var ev = { id: uid(), name: name, date: date || today() };
+  p.eventsAttended.push(ev);
+  persist();
+  return ev;
+}
+function castVote(pnmId, voter, choice) {
+  if (!voter) { showToast("Pick your name first (top right) to vote", "error"); return; }
+  var p = state.data.pnms.find(function (x) { return x.id === pnmId; });
+  if (!p) return;
+  p.votes[voter] = choice;
+  persist();
+}
+function addBrother(name) {
+  var clean = (name || "").trim();
+  if (!clean) return;
+  var exists = state.data.brothers.some(function (b) { return b.toLowerCase() === clean.toLowerCase(); });
+  if (exists) return;
+  state.data.brothers.push(clean);
+  persist();
+}
+function removeBrother(name) {
+  state.data.brothers = state.data.brothers.filter(function (b) { return b !== name; });
+  persist();
+}
+function setCurrentVoter(name) { state.data.currentVoter = name; persist(); }
+
+function exportJSON() {
+  var blob = new Blob([JSON.stringify(state.data, null, 2)], { type: "application/json" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = "rushpulse-backup-" + today() + ".json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function importJSON(file) {
+  var reader = new FileReader();
+  reader.onload = function () {
+    try {
+      var parsed = JSON.parse(reader.result);
+      var d = defaultData();
+      for (var k in d) if (parsed[k] !== undefined) d[k] = parsed[k];
+      state.data = d;
+      persist();
+      renderApp();
+      showToast("Data imported", "success");
+    } catch (e) { showToast("Import failed — invalid file", "error"); }
+  };
+  reader.readAsText(file);
+}
+
+/* =================================================================
+   Toast
+================================================================= */
+function showToast(text, tone) {
+  var t = document.getElementById("toast");
+  t.textContent = text;
+  t.className = "show toast-" + (tone || "info");
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(function () { t.className = ""; }, 2600);
+}
+
+/* =================================================================
+   Header
+================================================================= */
+var TABS = [
+  { id: "scouting", label: "Scouting" },
+  { id: "tracker", label: "Rush Tracker" },
+  { id: "deliberations", label: "Deliberations" },
+  { id: "roster", label: "Roster" }
+];
+function renderHeader() {
+  var container = document.getElementById("sidebar");
+  var voterSelect = el("select", {
+    class: "input", style: { width: "auto", padding: "6px 8px", fontSize: "12px" },
+    title: "Who are you? (used for votes & notes)",
+    onchange: function (e) { setCurrentVoter(e.target.value); }
+  },
+    el("option", { value: "" }, "I am…"),
+    state.data.brothers.map(function (b) { return el("option", { value: b, selected: state.data.currentVoter === b }, b); })
+  );
+  var fileInput = el("input", { type: "file", accept: "application/json", class: "hidden", onchange: function (e) { if (e.target.files[0]) importJSON(e.target.files[0]); } });
+
+  var inner = el("div", { class: "sidebar-inner" },
+    el("div", { class: "brand" },
+      el("div", { class: "brand-logo" }, "RP"),
+      el("div", {},
+        el("div", { class: "brand-name" }, "RushPulse"),
+        el("div", { class: "brand-sub" }, "AEPi · Oregon Rush")
+      )
+    ),
+    el("div", { class: "tabs" }, TABS.map(function (t) {
+      return el("button", {
+        class: "tab-btn" + (state.tab === t.id ? " active" : ""),
+        onclick: function () { state.tab = t.id; renderApp(); }
+      }, t.label);
+    })),
+    el("div", { class: "header-actions" },
+      voterSelect,
+      el("button", { class: "btn btn-ghost btn-sm", onclick: exportJSON }, "Export"),
+      el("button", { class: "btn btn-ghost btn-sm", onclick: function () { fileInput.click(); } }, "Import"),
+      fileInput
+    )
+  );
+  mount(container, inner);
+}
+
+/* =================================================================
+   Modal shell
+================================================================= */
+function openModal(title, bodyNode, opts) {
+  opts = opts || {};
+  var root = document.getElementById("modal-root");
+  var overlay = el("div", {
+    class: "modal-overlay",
+    onclick: function (e) { if (e.target === overlay) closeModal(); }
+  },
+    el("div", { class: "modal" + (opts.wide ? " wide" : "") },
+      el("div", { class: "modal-header" },
+        el("h3", {}, title),
+        el("button", { class: "modal-close", onclick: closeModal }, "×")
+      ),
+      el("div", { class: "modal-body" }, bodyNode)
+    )
+  );
+  mount(root, overlay);
+}
+function closeModal() {
+  clearNode(document.getElementById("modal-root"));
+  state.prospectModal = null;
+  state.quickLogOpen = false;
+  state.pnmDetailId = null;
+}
+
+/* =================================================================
+   MODULE 1 — Prospect Scouting
+================================================================= */
+function field(label, node) {
+  return el("label", { class: "field" }, el("span", { class: "field-label" }, label), node);
+}
+function brotherDatalist(idAttr) {
+  return el("datalist", { id: idAttr }, state.data.brothers.map(function (b) { return el("option", { value: b }); }));
+}
+
+function openProspectModal(prospect) {
+  state.prospectModal = prospect ? { mode: "edit", prospect: prospect } : { mode: "add", prospect: null };
+  renderProspectModal();
+}
+function renderProspectModal() {
+  var editing = state.prospectModal.prospect;
+  var f = editing || { name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "", major: "", classYear: "", vouchedBy: "", outreachStatus: "Uncontacted", notes: "", jewish: "TBD", legacy: "TBD", connections: "" };
+
+  var nameI = el("input", { class: "input", required: true, value: f.name, placeholder: "Full name" });
+  var igI = el("input", { class: "input", value: f.instagram, placeholder: "@handle" });
+  var phoneI = el("input", { class: "input", value: f.phone, placeholder: "(555) 555-5555" });
+  var emailI = el("input", { class: "input", value: f.email, placeholder: "name@uoregon.edu" });
+  var hometownI = el("input", { class: "input", value: f.hometown });
+  var schoolI = el("input", { class: "input", value: f.highSchool });
+  var majorI = el("input", { class: "input", value: f.major });
+  var yearI = el("input", { class: "input", value: f.classYear, placeholder: "e.g. 2029" });
+  var vouchI = el("input", { class: "input", value: f.vouchedBy, placeholder: "Brother name", list: "brothers-dl-1" });
+  var statusI = el("select", { class: "input" }, SCOUTING_COLUMNS.map(function (s) {
+    return el("option", { value: s, selected: (f.outreachStatus || "Uncontacted") === s }, s);
+  }));
+  var jewishI = yesNoTbdSelect(f.jewish);
+  var legacyI = yesNoTbdSelect(f.legacy);
+  var connectionsI = el("input", { class: "input", value: f.connections, placeholder: "Brother they know from childhood (optional)", list: "brothers-dl-1" });
+  var notesI = el("textarea", { class: "input", rows: 2, placeholder: "How you know them, vibe…" }, f.notes);
+
+  var form = el("form", { class: "form-grid" },
+    field("Name *", nameI), field("Instagram", igFieldWithLink(igI)),
+    field("Phone", phoneI), field("Email", emailI),
+    field("Hometown", hometownI), field("High School", schoolI),
+    field("Major", majorI), field("Class Year", yearI),
+    field("Vouched By", vouchI), field("Outreach Status", statusI),
+    field("Jewish", jewishI), field("Legacy", legacyI)
+  );
+
+  var body = el("div", {},
+    form,
+    field("Connections (optional)", connectionsI),
+    field("Notes", notesI),
+    brotherDatalist("brothers-dl-1"),
+    el("div", { class: "modal-footer" },
+      el("button", { class: "btn btn-ghost", type: "button", onclick: closeModal }, "Cancel"),
+      el("button", {
+        class: "btn btn-primary", type: "button", onclick: function () {
+          if (!nameI.value.trim()) { nameI.focus(); return; }
+          var fields = {
+            name: nameI.value.trim(), instagram: igI.value.trim(), phone: phoneI.value.trim(), email: emailI.value.trim(),
+            hometown: hometownI.value.trim(), highSchool: schoolI.value.trim(), major: majorI.value.trim(),
+            classYear: yearI.value.trim(), vouchedBy: vouchI.value.trim(), outreachStatus: statusI.value, notes: notesI.value,
+            jewish: jewishI.value, legacy: legacyI.value, connections: connectionsI.value.trim()
+          };
+          var ok = true;
+          if (editing) editProspect(editing.id, fields);
+          else ok = addProspect(fields);
+          if (ok) { closeModal(); renderTabContent(); }
+        }
+      }, "Save")
+    )
+  );
+  openModal(editing ? "Edit Prospect" : "Add Prospect", body);
+}
+
+function renderQuickAddModal() {
+  var nameI = el("input", { class: "input", required: true, placeholder: "Full name" });
+  var igI = el("input", { class: "input", placeholder: "@handle" });
+  var phoneI = el("input", { class: "input", placeholder: "(555) 555-5555 (optional)" });
+  var hometownI = el("input", { class: "input", placeholder: "Optional" });
+  var schoolI = el("input", { class: "input", placeholder: "Optional" });
+  var jewishI = yesNoTbdSelect("TBD");
+  var legacyI = yesNoTbdSelect("TBD");
+  var connectionsI = el("input", { class: "input", placeholder: "Brother they know from childhood (optional)", list: "brothers-dl-qa" });
+
+  function submit() {
+    if (!nameI.value.trim()) { nameI.focus(); return; }
+    var ok = addProspect({
+      name: nameI.value.trim(), instagram: igI.value.trim(), phone: phoneI.value.trim(),
+      hometown: hometownI.value.trim(), highSchool: schoolI.value.trim(),
+      jewish: jewishI.value, legacy: legacyI.value, connections: connectionsI.value.trim()
+    });
+    if (ok) { closeModal(); renderTabContent(); }
+  }
+
+  var body = el("div", {},
+    field("Name *", nameI),
+    field("Instagram", igFieldWithLink(igI)),
+    field("Phone (optional)", phoneI),
+    field("Hometown (optional)", hometownI),
+    field("High School (optional)", schoolI),
+    field("Jewish", jewishI),
+    field("Legacy", legacyI),
+    field("Connections (optional)", connectionsI),
+    brotherDatalist("brothers-dl-qa"),
+    el("button", {
+      class: "btn btn-primary", style: { width: "100%", padding: "11px", fontSize: "14.5px" }, type: "button",
+      onclick: submit
+    }, "Add Prospect ⚡")
+  );
+  openModal("⚡ Quick Add", body);
+}
+
+function buildProspectCard(p) {
+  var idx = OUTREACH_STATUSES.indexOf(p.outreachStatus);
+  var details = el("div", { class: "p-details hidden" },
+    p.notes ? el("p", {}, p.notes) : null,
+    p.phone ? el("div", { class: "row" }, "📞 " + p.phone) : null,
+    p.email ? el("div", { class: "row" }, "✉️ " + p.email) : null,
+    p.classYear ? el("div", { class: "row" }, "🎓 Class of " + p.classYear) : null,
+    el("div", { style: { display: "flex", gap: "10px", marginTop: "4px" } },
+      el("button", { class: "btn-xs", style: { textDecoration: "underline", color: "#fca5a5" }, onclick: function (e) { e.stopPropagation(); deleteProspect(p.id); renderTabContent(); } }, "Delete")
+    )
+  );
+  var toggleBtn = el("button", { class: "btn-xs", style: { fontSize: "13px" } }, "▾");
+  toggleBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    var isHidden = details.classList.contains("hidden");
+    details.classList.toggle("hidden");
+    toggleBtn.textContent = isHidden ? "▲" : "▾";
+  });
+
+  var badges = el("div", { class: "p-badges" },
+    p.hometown ? badge(p.hometown) : null,
+    p.highSchool ? badge(p.highSchool) : null,
+    p.major ? badge(p.major, "indigo") : null,
+    badge("Jewish: " + (p.jewish || "TBD"), statusBadgeTone(p.jewish || "TBD")),
+    badge("Legacy: " + (p.legacy || "TBD"), statusBadgeTone(p.legacy || "TBD"))
+  );
+
+  var isNotInterested = p.outreachStatus === NOT_INTERESTED;
+  var actions = el("div", { class: "p-actions" });
+  if (isNotInterested) {
+    actions.appendChild(el("button", {
+      class: "btn btn-ghost btn-sm",
+      onclick: function (e) { e.stopPropagation(); editProspect(p.id, { outreachStatus: "Uncontacted" }); renderTabContent(); }
+    }, "↺ Reconsider"));
+  } else {
+    if (idx < OUTREACH_STATUSES.length - 1) {
+      actions.appendChild(el("button", {
+        class: "btn btn-ghost btn-sm",
+        onclick: function (e) { e.stopPropagation(); editProspect(p.id, { outreachStatus: OUTREACH_STATUSES[idx + 1] }); renderTabContent(); }
+      }, "→ " + OUTREACH_STATUSES[idx + 1]));
+    }
+    actions.appendChild(el("button", {
+      class: "btn btn-ghost btn-sm", style: { color: "#fca5a5" },
+      onclick: function (e) { e.stopPropagation(); editProspect(p.id, { outreachStatus: NOT_INTERESTED }); renderTabContent(); }
+    }, "Not Interested"));
+    actions.appendChild(el("button", {
+      class: "btn btn-primary btn-sm", style: { marginLeft: "auto" },
+      onclick: function (e) { e.stopPropagation(); promoteToPNM(p.id); }
+    }, "Promote to PNM →"));
+  }
+
+  return el("div", { class: "p-card" + (isNotInterested ? " dead" : ""), onclick: function () { openProspectModal(p); } },
+    el("div", { class: "p-card-top" },
+      el("div", { class: "p-card-id" },
+        el("div", { class: "avatar" }, initials(p.name)),
+        el("div", { style: { minWidth: 0 } },
+          el("div", { class: "p-name" }, p.name),
+          igLink(p.instagram)
+        )
+      ),
+      toggleBtn
+    ),
+    badges,
+    p.vouchedBy ? el("div", { class: "p-vouch" }, "Vouched by ", el("span", {}, p.vouchedBy)) : null,
+    p.connections ? el("div", { class: "p-vouch" }, "Connections: ", el("span", {}, p.connections)) : null,
+    details,
+    actions
+  );
+}
+
+function renderScouting() {
+  var wrap = el("div", {});
+  var hometownSel = el("select", { class: "input", onchange: function (e) { state.scoutingHometown = e.target.value; refreshScoutingColumns(); } });
+  var schoolSel = el("select", { class: "input", onchange: function (e) { state.scoutingSchool = e.target.value; refreshScoutingColumns(); } });
+  var majorSel = el("select", { class: "input", onchange: function (e) { state.scoutingMajor = e.target.value; refreshScoutingColumns(); } });
+  var searchI = el("input", { class: "input", placeholder: "Search name or @instagram…", value: state.scoutingSearch, oninput: function (e) { state.scoutingSearch = e.target.value; refreshScoutingColumns(); } });
+
+  var filterBar = el("div", { class: "filter-bar" },
+    searchI, hometownSel, schoolSel, majorSel,
+    el("button", { class: "btn btn-ghost", style: { marginLeft: "auto" }, onclick: renderQuickAddModal }, "⚡ Quick Add"),
+    el("button", { class: "btn btn-primary", onclick: function () { openProspectModal(null); } }, "+ Add Prospect")
+  );
+  var columns = el("div", { class: "columns-grid", id: "scouting-columns" });
+  wrap.appendChild(filterBar);
+  wrap.appendChild(columns);
+
+  fillFilterOptions(hometownSel, schoolSel, majorSel);
+  fillScoutingColumns(columns);
+  return wrap;
+}
+function fillFilterOptions(hometownSel, schoolSel, majorSel) {
+  var active = state.data.prospects.filter(function (p) { return !p.promotedToPnm; });
+  function uniq(arr) {
+    var seen = {}; var out = [];
+    arr.forEach(function (v) { if (v && !seen[v]) { seen[v] = true; out.push(v); } });
+    return out.sort();
+  }
+  var hometowns = uniq(active.map(function (p) { return p.hometown; }));
+  var schools = uniq(active.map(function (p) { return p.highSchool; }));
+  var majors = uniq(active.map(function (p) { return p.major; }));
+  mount(hometownSel, el("option", { value: "" }, "All hometowns"), hometowns.map(function (h) { return el("option", { value: h, selected: state.scoutingHometown === h }, h); }));
+  mount(schoolSel, el("option", { value: "" }, "All high schools"), schools.map(function (h) { return el("option", { value: h, selected: state.scoutingSchool === h }, h); }));
+  mount(majorSel, el("option", { value: "" }, "All majors"), majors.map(function (h) { return el("option", { value: h, selected: state.scoutingMajor === h }, h); }));
+}
+function refreshScoutingColumns() {
+  var container = document.getElementById("scouting-columns");
+  if (container) fillScoutingColumns(container);
+}
+function fillScoutingColumns(container) {
+  clearNode(container);
+  var active = state.data.prospects.filter(function (p) { return !p.promotedToPnm; });
+  var search = state.scoutingSearch.toLowerCase();
+  var filtered = active.filter(function (p) {
+    var matchesSearch = !search || p.name.toLowerCase().indexOf(search) !== -1 || normalizeIG(p.instagram).indexOf(search) !== -1;
+    return matchesSearch &&
+      (!state.scoutingHometown || p.hometown === state.scoutingHometown) &&
+      (!state.scoutingSchool || p.highSchool === state.scoutingSchool) &&
+      (!state.scoutingMajor || p.major === state.scoutingMajor);
+  });
+  SCOUTING_COLUMNS.forEach(function (status) {
+    var list = filtered.filter(function (p) { return (p.outreachStatus || "Uncontacted") === status; });
+    var isDead = status === NOT_INTERESTED;
+    var col = el("div", { class: "column" + (isDead ? " dead" : "") },
+      el("div", { class: "column-header" }, el("div", { class: "column-title" }, status), badge(String(list.length), isDead ? "red" : null)),
+      el("div", { class: "card-list" },
+        list.length ? list.map(buildProspectCard) : el("div", { class: "column-empty" }, "Nothing here")
+      )
+    );
+    container.appendChild(col);
+  });
+}
+
+/* =================================================================
+   MODULE 2 — Rush Tracker (Kanban)
+================================================================= */
+var draggedPnmId = null;
+
+function renderQuickLogModal() {
+  var pnms = state.data.pnms;
+  var existingSel = el("select", { class: "input" },
+    el("option", { value: "" }, "Select PNM…"),
+    pnms.map(function (p) { return el("option", { value: p.id }, p.name); })
+  );
+  var newNameI = el("input", { class: "input", placeholder: "Quick add a new person" });
+  var vouchI = el("input", { class: "input", placeholder: "Brother name", list: "brothers-dl-2" });
+  var stageSel = el("select", { class: "input" }, STAGES.map(function (s) {
+    return el("option", { value: s, selected: s === "Attended Event" }, s);
+  }));
+
+  var existingWrap = el("div", {}, field("Who", existingSel));
+  var newWrap = el("div", { class: "hidden" }, field("Name", newNameI), field("Vouched by (optional)", vouchI));
+
+  var existingBtn = el("button", { type: "button", class: "active" }, "Existing PNM");
+  var newBtn = el("button", { type: "button" }, "New Name");
+  existingBtn.addEventListener("click", function () {
+    existingBtn.classList.add("active"); newBtn.classList.remove("active");
+    existingWrap.classList.remove("hidden"); newWrap.classList.add("hidden");
+  });
+  newBtn.addEventListener("click", function () {
+    newBtn.classList.add("active"); existingBtn.classList.remove("active");
+    newWrap.classList.remove("hidden"); existingWrap.classList.add("hidden");
+  });
+
+  var body = el("div", {},
+    el("div", { class: "mode-toggle" }, existingBtn, newBtn),
+    existingWrap, newWrap,
+    brotherDatalist("brothers-dl-2"),
+    field("Set stage to", stageSel),
+    el("button", {
+      class: "btn btn-primary", style: { width: "100%", padding: "11px", fontSize: "14.5px" }, type: "button",
+      onclick: function () {
+        var usingExisting = !existingWrap.classList.contains("hidden");
+        if (usingExisting) {
+          if (!existingSel.value) return;
+          movePnmStage(existingSel.value, stageSel.value);
+        } else {
+          if (!newNameI.value.trim()) return;
+          addPnmQuick({ name: newNameI.value.trim(), vouchedBy: vouchI.value.trim(), stage: stageSel.value });
+        }
+        closeModal();
+        renderTabContent();
+      }
+    }, "Log It ⚡")
+  );
+  openModal("⚡ 10-Second Quick Log", body);
+}
+
+function renderPnmDetailModal(pnm) {
+  var starsContainer = el("div", {});
+  function refreshStars() {
+    clearNode(starsContainer);
+    starsContainer.appendChild(starRow(pnm.vibeRating, function (v) {
+      editPnm(pnm.id, { vibeRating: v });
+      refreshStars();
+    }));
+  }
+  refreshStars();
+
+  var nameI = el("input", { class: "input", value: pnm.name, onblur: function (e) { editPnm(pnm.id, { name: e.target.value }); } });
+  var igI = el("input", { class: "input", value: pnm.instagram, onblur: function (e) { editPnm(pnm.id, { instagram: e.target.value }); } });
+  var phoneI = el("input", { class: "input", value: pnm.phone, onblur: function (e) { editPnm(pnm.id, { phone: e.target.value }); } });
+  var emailI = el("input", { class: "input", value: pnm.email, onblur: function (e) { editPnm(pnm.id, { email: e.target.value }); } });
+  var hometownI = el("input", { class: "input", value: pnm.hometown, onblur: function (e) { editPnm(pnm.id, { hometown: e.target.value }); } });
+  var schoolI = el("input", { class: "input", value: pnm.highSchool, onblur: function (e) { editPnm(pnm.id, { highSchool: e.target.value }); } });
+  var majorI = el("input", { class: "input", value: pnm.major, onblur: function (e) { editPnm(pnm.id, { major: e.target.value }); } });
+  var yearI = el("input", { class: "input", value: pnm.classYear, onblur: function (e) { editPnm(pnm.id, { classYear: e.target.value }); } });
+  var vouchI = el("input", { class: "input", value: pnm.vouchedBy, list: "brothers-dl-3", onblur: function (e) { editPnm(pnm.id, { vouchedBy: e.target.value }); } });
+  var stageSel = el("select", { class: "input", onchange: function (e) { editPnm(pnm.id, { stage: e.target.value }); } },
+    STAGES.map(function (s) { return el("option", { value: s, selected: pnm.stage === s }, s); })
+  );
+  var jewishI = yesNoTbdSelect(pnm.jewish, function (v) { editPnm(pnm.id, { jewish: v }); });
+  var legacyI = yesNoTbdSelect(pnm.legacy, function (v) { editPnm(pnm.id, { legacy: v }); });
+  var connectionsI = el("input", { class: "input", value: pnm.connections, list: "brothers-dl-3", onblur: function (e) { editPnm(pnm.id, { connections: e.target.value }); } });
+
+  var eventsList = el("div", { class: "mini-list" });
+  function refreshEvents() {
+    clearNode(eventsList);
+    if (pnm.eventsAttended.length === 0) eventsList.appendChild(el("div", { class: "empty-note" }, "None logged yet"));
+    pnm.eventsAttended.forEach(function (ev) {
+      eventsList.appendChild(el("div", { style: { fontSize: "13px" } }, "🗓 " + ev.name + " · " + ev.date));
+    });
+  }
+  refreshEvents();
+  var eventNameI = el("input", { class: "input", placeholder: "Event name" });
+  var addEventBtn = el("button", {
+    class: "btn btn-ghost", type: "button", onclick: function () {
+      if (!eventNameI.value.trim()) return;
+      addEvent(pnm.id, eventNameI.value.trim());
+      eventNameI.value = "";
+      refreshEvents();
+    }
+  }, "Add");
+
+  var notesList = el("div", { class: "mini-list" });
+  function refreshNotes() {
+    clearNode(notesList);
+    if (pnm.notes.length === 0) notesList.appendChild(el("div", { class: "empty-note" }, "No notes yet"));
+    pnm.notes.forEach(function (n) {
+      notesList.appendChild(el("div", { class: "note-item" }, n.text, el("div", { class: "note-meta" }, n.author + " · " + n.date)));
+    });
+  }
+  refreshNotes();
+  var noteI = el("input", { class: "input", placeholder: "Add a note as " + (state.data.currentVoter || "…") });
+  var addNoteBtn = el("button", {
+    class: "btn btn-ghost", type: "button", onclick: function () {
+      if (!noteI.value.trim()) return;
+      addNote(pnm.id, state.data.currentVoter, noteI.value.trim());
+      noteI.value = "";
+      refreshNotes();
+    }
+  }, "Add");
+
+  var body = el("div", {},
+    el("div", { class: "form-grid" },
+      field("Name", nameI), field("Instagram", igFieldWithLink(igI)),
+      field("Phone", phoneI), field("Email", emailI),
+      field("Hometown", hometownI), field("High School", schoolI),
+      field("Major", majorI), field("Class Year", yearI),
+      field("Vouched By", vouchI), field("Stage", stageSel),
+      field("Jewish", jewishI), field("Legacy", legacyI),
+      field("Connections", connectionsI)
+    ),
+    brotherDatalist("brothers-dl-3"),
+    el("div", { style: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" } },
+      el("span", { class: "field-label", style: { marginBottom: 0 } }, "Vibe Rating"), starsContainer
+    ),
+    el("div", { class: "section-divider" },
+      el("div", { class: "section-title" }, "Events Attended"),
+      eventsList,
+      el("div", { class: "inline-add" }, eventNameI, addEventBtn)
+    ),
+    el("div", { class: "section-divider" },
+      el("div", { class: "section-title" }, "Notes"),
+      notesList,
+      el("div", { class: "inline-add" }, noteI, addNoteBtn)
+    ),
+    el("div", { class: "modal-footer between section-divider" },
+      el("button", { class: "btn btn-danger", type: "button", onclick: function () { deletePnm(pnm.id); closeModal(); renderTabContent(); } }, "Delete PNM"),
+      el("button", { class: "btn btn-primary", type: "button", onclick: function () { closeModal(); renderTabContent(); } }, "Done")
+    )
+  );
+  openModal(pnm.name, body, { wide: true });
+}
+
+function buildKanbanCard(pnm) {
+  var votesArr = Object.keys(pnm.votes || {}).map(function (k) { return pnm.votes[k]; });
+  var card = el("div", { class: "k-card", draggable: true },
+    el("div", { class: "k-card-top" },
+      el("div", { class: "avatar" }, initials(pnm.name)),
+      el("div", { class: "k-name" }, pnm.name)
+    ),
+    starRow(pnm.vibeRating, null, true),
+    el("div", { class: "k-badges" },
+      pnm.vouchedBy ? badge(pnm.vouchedBy, "indigo") : null,
+      pnm.eventsAttended.length > 0 ? badge(pnm.eventsAttended.length + " event" + (pnm.eventsAttended.length > 1 ? "s" : "")) : null,
+      votesArr.length > 0 ? badge(votesArr.length + " vote" + (votesArr.length > 1 ? "s" : ""), "green") : null,
+      badge("J: " + (pnm.jewish || "TBD"), statusBadgeTone(pnm.jewish || "TBD")),
+      badge("L: " + (pnm.legacy || "TBD"), statusBadgeTone(pnm.legacy || "TBD"))
+    )
+  );
+  card.addEventListener("click", function () { renderPnmDetailModal(pnm); });
+  card.addEventListener("dragstart", function (e) {
+    draggedPnmId = pnm.id;
+    e.dataTransfer.setData("text/plain", pnm.id);
+    card.classList.add("dragging");
+  });
+  card.addEventListener("dragend", function () { card.classList.remove("dragging"); draggedPnmId = null; });
+  return card;
+}
+
+function renderTracker() {
+  var wrap = el("div", {});
+  wrap.appendChild(el("button", { class: "quick-log-btn", onclick: renderQuickLogModal }, "⚡ 10-Second Quick Log"));
+
+  var kanban = el("div", { class: "kanban-wrap" });
+  STAGES.forEach(function (stage) {
+    var list = state.data.pnms.filter(function (p) { return p.stage === stage; });
+    var col = el("div", { class: "kanban-col" },
+      el("div", { class: "column-header" },
+        el("div", { class: "column-title" }, stage),
+        badge(String(list.length), stage === "Bid Accepted" ? "green" : stage === "Dropped" ? "red" : null)
+      ),
+      el("div", { class: "card-list" }, list.length ? list.map(buildKanbanCard) : el("div", { class: "column-empty" }, "Drop here"))
+    );
+    col.addEventListener("dragover", function (e) { e.preventDefault(); col.classList.add("drop-hover"); });
+    col.addEventListener("dragleave", function () { col.classList.remove("drop-hover"); });
+    col.addEventListener("drop", function (e) {
+      e.preventDefault();
+      col.classList.remove("drop-hover");
+      var id = e.dataTransfer.getData("text/plain") || draggedPnmId;
+      if (id) movePnmStage(id, stage);
+      renderTabContent();
+    });
+    kanban.appendChild(col);
+  });
+  wrap.appendChild(kanban);
+  return wrap;
+}
+
+/* =================================================================
+   MODULE 3 — Chapter Deliberations
+================================================================= */
+function buildVoteBar(pnm) {
+  var votes = Object.keys(pnm.votes || {}).map(function (k) { return pnm.votes[k]; });
+  var total = state.data.brothers.length > 0 ? state.data.brothers.length : Math.max(votes.length, 1);
+  var yes = votes.filter(function (v) { return v === "yes"; }).length;
+  var no = votes.filter(function (v) { return v === "no"; }).length;
+  var discuss = votes.filter(function (v) { return v === "discuss"; }).length;
+  function pct(n) { return Math.round((n / total) * 100); }
+  return el("div", {},
+    el("div", { class: "vote-bar" },
+      el("div", { class: "vote-seg-yes", style: { width: pct(yes) + "%" } }),
+      el("div", { class: "vote-seg-discuss", style: { width: pct(discuss) + "%" } }),
+      el("div", { class: "vote-seg-no", style: { width: pct(no) + "%" } })
+    ),
+    el("div", { class: "vote-meta" },
+      el("span", { class: "y" }, "Yes " + yes + " (" + pct(yes) + "%)"),
+      el("span", { class: "d" }, "Discuss " + discuss + " (" + pct(discuss) + "%)"),
+      el("span", { class: "n" }, "No " + no + " (" + pct(no) + "%)")
+    ),
+    el("div", { class: "vote-total" }, votes.length + " of " + total + " voted")
+  );
+}
+
+function renderDeliberations() {
+  var eligible = state.data.pnms.filter(function (p) {
+    return state.showAllStages ? p.stage !== "Dropped" : ADVANCED_STAGES.indexOf(p.stage) !== -1;
+  });
+  if (!state.selectedPnmId || !eligible.some(function (p) { return p.id === state.selectedPnmId; })) {
+    state.selectedPnmId = eligible.length ? eligible[0].id : null;
+  }
+
+  var wrap = el("div", {});
+  var headerRow = el("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" } },
+    el("h2", { style: { fontWeight: 600, margin: 0, fontSize: "16px" } }, "Chapter Deliberations"),
+    el("label", { class: "showall-label" },
+      el("input", { type: "checkbox", checked: state.showAllStages, onchange: function (e) { state.showAllStages = e.target.checked; renderTabContent(); } }),
+      "Show all active stages"
+    )
+  );
+  wrap.appendChild(headerRow);
+
+  if (!state.data.currentVoter) {
+    wrap.appendChild(el("div", { class: "voter-banner" }, 'Select your name in the top-right "I am…" menu to cast votes and leave notes.'));
+  }
+
+  var listCol = el("div", { class: "pnm-list" });
+  eligible.forEach(function (p) {
+    var votes = Object.keys(p.votes || {}).map(function (k) { return p.votes[k]; });
+    var yesPct = state.data.brothers.length ? Math.round((votes.filter(function (v) { return v === "yes"; }).length / state.data.brothers.length) * 100) : 0;
+    var item = el("button", {
+      class: "pnm-list-item" + (state.selectedPnmId === p.id ? " selected" : ""),
+      onclick: function () { state.selectedPnmId = p.id; renderTabContent(); }
+    },
+      el("div", { class: "pnm-list-row" },
+        el("span", { style: { fontWeight: 500, fontSize: "13px" } }, p.name),
+        badge(p.stage, p.stage === "Bid Accepted" ? "green" : "indigo")
+      ),
+      el("div", { class: "pnm-list-meta" }, yesPct + "% yes · " + votes.length + " votes cast")
+    );
+    listCol.appendChild(item);
+  });
+  if (eligible.length === 0) listCol.appendChild(el("div", { class: "empty-state" }, "No PNMs at this stage yet"));
+
+  var dossierCol = el("div", { class: "dossier" });
+  var selected = eligible.find(function (p) { return p.id === state.selectedPnmId; });
+  if (!selected) {
+    dossierCol.appendChild(el("div", { class: "empty-state" }, "Select a PNM to view their dossier"));
+  } else {
+    var starsWrap = el("div", {});
+    function refreshStars() {
+      clearNode(starsWrap);
+      starsWrap.appendChild(starRow(selected.vibeRating, function (v) { editPnm(selected.id, { vibeRating: v }); refreshStars(); }));
+    }
+    refreshStars();
+
+    var notesList = el("div", { class: "mini-list" });
+    function refreshNotes() {
+      clearNode(notesList);
+      if (selected.notes.length === 0) notesList.appendChild(el("div", { class: "empty-note" }, "No notes yet"));
+      selected.notes.forEach(function (n) {
+        notesList.appendChild(el("div", { class: "note-item" }, n.text + " — " + n.author + ", " + n.date));
+      });
+    }
+    refreshNotes();
+    var noteI = el("input", { class: "input", placeholder: "Add a note as " + (state.data.currentVoter || "…") });
+    var addNoteBtn = el("button", {
+      class: "btn btn-ghost", onclick: function () {
+        if (!noteI.value.trim()) return;
+        addNote(selected.id, state.data.currentVoter, noteI.value.trim());
+        noteI.value = "";
+        refreshNotes();
+      }
+    }, "Add");
+
+    var voteBarWrap = el("div", {});
+    voteBarWrap.appendChild(buildVoteBar(selected));
+    var yesBtn = el("button", { class: "vote-btn yes" + (selected.votes[state.data.currentVoter] === "yes" ? " active" : "") }, "Yes");
+    var discussBtn = el("button", { class: "vote-btn discuss" + (selected.votes[state.data.currentVoter] === "discuss" ? " active" : "") }, "Discuss");
+    var noBtn = el("button", { class: "vote-btn no" + (selected.votes[state.data.currentVoter] === "no" ? " active" : "") }, "No");
+    function refreshVoteRow() {
+      yesBtn.className = "vote-btn yes" + (selected.votes[state.data.currentVoter] === "yes" ? " active" : "");
+      discussBtn.className = "vote-btn discuss" + (selected.votes[state.data.currentVoter] === "discuss" ? " active" : "");
+      noBtn.className = "vote-btn no" + (selected.votes[state.data.currentVoter] === "no" ? " active" : "");
+      clearNode(voteBarWrap); voteBarWrap.appendChild(buildVoteBar(selected));
+    }
+    yesBtn.addEventListener("click", function () { castVote(selected.id, state.data.currentVoter, "yes"); refreshVoteRow(); refreshListMeta(); });
+    discussBtn.addEventListener("click", function () { castVote(selected.id, state.data.currentVoter, "discuss"); refreshVoteRow(); refreshListMeta(); });
+    noBtn.addEventListener("click", function () { castVote(selected.id, state.data.currentVoter, "no"); refreshVoteRow(); refreshListMeta(); });
+    function refreshListMeta() { renderTabContent(); }
+
+    dossierCol.appendChild(el("div", { class: "dossier-head" },
+      el("div", { class: "avatar-lg" }, initials(selected.name)),
+      el("div", { style: { flex: 1 } },
+        el("div", { class: "dossier-name" }, selected.name),
+        el("div", { class: "dossier-sub" }, (selected.major || "—") + (selected.classYear ? " · Class of " + selected.classYear : "")),
+        el("div", { style: { marginTop: "4px" } }, starsWrap)
+      ),
+      badge(selected.stage, "indigo")
+    ));
+    dossierCol.appendChild(el("div", { class: "dossier-grid" },
+      el("div", {}, el("span", { class: "k" }, "Hometown: "), selected.hometown || "—"),
+      el("div", {}, el("span", { class: "k" }, "High School: "), selected.highSchool || "—"),
+      el("div", {}, el("span", { class: "k" }, "Vouched by: "), selected.vouchedBy || "—"),
+      el("div", {}, el("span", { class: "k" }, "Events: "), String(selected.eventsAttended.length)),
+      el("div", {}, el("span", { class: "k" }, "Instagram: "), igLink(selected.instagram) || "—"),
+      el("div", {}, el("span", { class: "k" }, "Connections: "), selected.connections || "—")
+    ));
+    dossierCol.appendChild(el("div", { class: "section-divider" },
+      el("div", { class: "section-title" }, "Notes Timeline"),
+      notesList,
+      el("div", { class: "inline-add" }, noteI, addNoteBtn)
+    ));
+    dossierCol.appendChild(el("div", { class: "section-divider" },
+      el("div", { class: "section-title" }, "Cast Your Vote"),
+      el("div", { class: "vote-row" }, yesBtn, discussBtn, noBtn),
+      voteBarWrap
+    ));
+  }
+
+  wrap.appendChild(el("div", { class: "split-pane" }, listCol, dossierCol));
+  return wrap;
+}
+
+/* =================================================================
+   Roster tab
+================================================================= */
+function renderRoster() {
+  var nameI = el("input", { class: "input", placeholder: "Brother's name" });
+  var list = el("div", {});
+  function refreshList() {
+    clearNode(list);
+    if (state.data.brothers.length === 0) list.appendChild(el("div", { class: "empty-state" }, "No brothers added yet"));
+    state.data.brothers.forEach(function (b) {
+      list.appendChild(el("div", { class: "roster-row" },
+        el("span", { style: { fontSize: "13px" } }, b),
+        el("button", { class: "btn-xs", style: { color: "#fca5a5" }, onclick: function () { removeBrother(b); refreshList(); renderHeader(); } }, "Remove")
+      ));
+    });
+  }
+  refreshList();
+  function submitAdd() {
+    if (!nameI.value.trim()) return;
+    addBrother(nameI.value.trim());
+    nameI.value = "";
+    refreshList();
+    renderHeader();
+  }
+  nameI.addEventListener("keydown", function (e) { if (e.key === "Enter") submitAdd(); });
+
+  return el("div", { class: "roster-wrap" },
+    el("h2", { style: { fontWeight: 600, marginBottom: "4px", fontSize: "16px" } }, "Active Chapter Roster"),
+    el("div", { class: "roster-hint" }, 'Used for "Vouched By", voter identity, and the vote % baseline in Deliberations.'),
+    el("div", { class: "inline-add", style: { marginBottom: "14px" } },
+      nameI,
+      el("button", { class: "btn btn-primary", onclick: submitAdd }, "Add")
+    ),
+    list
+  );
+}
+
+/* =================================================================
+   Render orchestration
+================================================================= */
+function renderTabContent() {
+  var root = document.getElementById("tab-content");
+  clearNode(root);
+  if (state.tab === "scouting") root.appendChild(renderScouting());
+  else if (state.tab === "tracker") root.appendChild(renderTracker());
+  else if (state.tab === "deliberations") root.appendChild(renderDeliberations());
+  else if (state.tab === "roster") root.appendChild(renderRoster());
+}
+function renderApp() {
+  renderHeader();
+  renderTabContent();
+}
+
+renderApp();
+</script>
+</body>
+</html>
