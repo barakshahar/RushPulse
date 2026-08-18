@@ -233,10 +233,23 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 #toast.toast-error{background:linear-gradient(135deg,#dc2626,var(--red));}
 
 .empty-state{font-size:13px;color:var(--dimmer);font-style:italic;padding:8px 2px;}
+
+/* auth gate */
+#gate-root{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.auth-card{width:100%;max-width:380px;background:var(--panel);border:1px solid rgba(147,112,255,.22);border-radius:18px;padding:26px 24px;box-shadow:0 30px 90px -20px rgba(91,51,234,.5);}
+.auth-brand{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
+.auth-error{background:rgba(244,66,106,.12);border:1px solid rgba(244,66,106,.3);color:#ff9db4;font-size:12.5px;border-radius:10px;padding:9px 12px;margin-bottom:12px;}
+.auth-toggle{text-align:center;font-size:12.5px;color:var(--dim);margin-top:14px;}
+.auth-toggle button{background:none;border:none;color:var(--indigo2);cursor:pointer;font-size:12.5px;text-decoration:underline;padding:0;}
+.pending-card{width:100%;max-width:420px;background:var(--panel);border:1px solid rgba(245,158,11,.3);border-radius:18px;padding:28px 24px;text-align:center;}
+.role-pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;background:rgba(139,127,255,.18);color:#c3bbff;margin-left:6px;}
+.user-chip{display:flex;align-items:center;gap:8px;background:rgba(21,21,29,.9);backdrop-filter:blur(8px);border:1px solid rgba(147,112,255,.3);padding:6px 12px;border-radius:12px;font-size:12.5px;box-shadow:0 6px 18px -6px rgba(0,0,0,.5);}
+.approve-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:6px;}
 </style>
 </head>
 <body>
-<div id="app-shell">
+<div id="gate-root"></div>
+<div id="app-shell" class="hidden">
   <aside id="sidebar"></aside>
   <div id="main-wrap">
     <div id="topbar"></div>
@@ -246,6 +259,7 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 <div id="modal-root"></div>
 <div id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 "use strict";
 
@@ -257,8 +271,17 @@ var NOT_INTERESTED = "Not Interested";
 var SCOUTING_COLUMNS = OUTREACH_STATUSES.concat([NOT_INTERESTED]);
 var STAGES = ["Discovered", "Attended Event", "Interview", "Invite Only", "Bid Extended", "Bid Accepted", "Dropped"];
 var ADVANCED_STAGES = ["Interview", "Bid Extended", "Bid Accepted"];
-var STORAGE_KEY = "rushpulse_data_v1";
 var PULSE_ICON = '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><path d="M5 22h6l3-12 5 22 4-16 2.5 6h11.5" fill="none" stroke="white" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/* =================================================================
+   Supabase connection — paste your own Project URL + anon/public key
+   from Settings → API in your Supabase project.
+================================================================= */
+var SUPABASE_URL = "https://qljbebuesujhbqwshmle.supabase.co";
+var SUPABASE_ANON_KEY = "sb_publishable_Zzl59TuP11cNnFHCxwjS3Q_4y9KahiJ";
+var sb = (SUPABASE_URL.indexOf("PASTE_") !== 0 && window.supabase)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 function uid() {
   if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -359,39 +382,64 @@ function yesNoTbdSelect(value, onChange) {
 function statusBadgeTone(v) { return v === "Yes" ? "green" : v === "No" ? null : "amber"; }
 
 /* =================================================================
-   Persistence layer — the only two functions that touch storage.
-   Swap these for real API/Supabase calls later without touching UI code.
+   Persistence layer — everyone's browser reads/writes the same
+   single row in Supabase (table: app_data, id = 1, column: data jsonb).
+   Every mutation re-fetches the freshest copy right before writing,
+   so two brothers editing at the same moment don't silently clobber
+   each other's *other* changes (each function only ever touches the
+   one record/field it cares about).
 ================================================================= */
-function defaultData() { return { prospects: [], pnms: [], brothers: [], currentVoter: "" }; }
+function defaultData() { return { prospects: [], pnms: [] }; }
 function migrateData(d) {
-  // "Warm Response" was renamed to "Interested" — keep old saved data mapped forward.
   (d.prospects || []).forEach(function (p) {
     if (p.outreachStatus === "Warm Response") p.outreachStatus = "Interested";
   });
   return d;
 }
-function loadData() {
-  try {
-    var raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultData();
-    var parsed = JSON.parse(raw);
-    var d = defaultData();
-    for (var k in d) if (parsed[k] !== undefined) d[k] = parsed[k];
-    return migrateData(d);
-  } catch (e) { console.error("RushPulse: failed to load data", e); return defaultData(); }
+async function fetchAppData() {
+  var res = await sb.from("app_data").select("data").eq("id", 1).single();
+  if (res.error) { console.error("RushPulse: failed to load data", res.error); return defaultData(); }
+  var d = defaultData();
+  var parsed = res.data && res.data.data ? res.data.data : {};
+  for (var k in d) if (parsed[k] !== undefined) d[k] = parsed[k];
+  return migrateData(d);
 }
-function saveData(data) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
-  catch (e) { console.error("RushPulse: failed to save data", e); }
+async function saveAppData(data) {
+  var res = await sb.from("app_data").update({
+    data: data, updated_at: new Date().toISOString(),
+    updated_by: state.session ? state.session.user.id : null
+  }).eq("id", 1);
+  if (res.error) { console.error("RushPulse: failed to save data", res.error); throw res.error; }
+}
+// Fetch the freshest remote copy, let `mutator` change it in place, save it,
+// then sync local state to match so the UI re-render reflects the save.
+async function withData(mutator) {
+  try {
+    var fresh = await fetchAppData();
+    var result = mutator(fresh) || fresh;
+    await saveAppData(result);
+    state.data = result;
+    return result;
+  } catch (e) {
+    console.error("RushPulse: save failed", e);
+    showToast("Save failed — check your connection", "error");
+    return null;
+  }
 }
 
 /* =================================================================
    Global state
 ================================================================= */
 var state = {
-  data: loadData(),
+  data: defaultData(),
+  session: null,
+  profile: null,           // { id, name, role } for the signed-in user
+  approvedProfiles: [],    // role in ('brother','admin') — used for datalists & vote totals
+  pendingProfiles: [],     // role === 'pending' — shown to admins for approval
+  authView: "login",       // 'login' | 'signup'
+  authError: "",
   tab: "scouting",
-  scoutingSearch: "", scoutingHometown: "", scoutingSchool: "", scoutingMajor: "",
+  scoutingSearch: "", scoutingHometown: "", scoutingSchool: "", scoutingMajor: "", scoutingJewish: "",
   prospectModal: null,      // { mode:'add'|'edit', prospect }
   quickLogOpen: false,
   quickLogMode: "existing",
@@ -400,22 +448,50 @@ var state = {
   selectedPnmId: null,
   toastTimer: null
 };
-function persist() { saveData(state.data); }
+
+/* =================================================================
+   Auth & profiles
+================================================================= */
+async function fetchProfile(userId) {
+  var res = await sb.from("profiles").select("id,name,role").eq("id", userId).single();
+  if (res.error) { console.error("RushPulse: failed to load profile", res.error); return null; }
+  return res.data;
+}
+async function fetchProfileLists() {
+  var res = await sb.from("profiles").select("id,name,role").order("name");
+  if (res.error) { console.error("RushPulse: failed to load profiles", res.error); return; }
+  state.approvedProfiles = res.data.filter(function (p) { return p.role === "brother" || p.role === "admin"; });
+  state.pendingProfiles = res.data.filter(function (p) { return p.role === "pending"; });
+}
+async function signUp(name, email, password) {
+  state.authError = "";
+  var res = await sb.auth.signUp({ email: email, password: password, options: { data: { name: name } } });
+  if (res.error) { state.authError = res.error.message; renderGate(); return; }
+  await boot();
+}
+async function signIn(email, password) {
+  state.authError = "";
+  var res = await sb.auth.signInWithPassword({ email: email, password: password });
+  if (res.error) { state.authError = res.error.message; renderGate(); return; }
+  await boot();
+}
+async function signOut() {
+  await sb.auth.signOut();
+  state.session = null; state.profile = null; state.data = defaultData();
+  await boot();
+}
+async function approveProfile(id, role) {
+  var res = await sb.from("profiles").update({ role: role }).eq("id", id);
+  if (res.error) { showToast("Couldn't update — " + res.error.message, "error"); return; }
+  await fetchProfileLists();
+  renderTabContent();
+  showToast("Updated", "success");
+}
 
 /* =================================================================
    Business logic (framework-agnostic, mutates state.data)
 ================================================================= */
-function igExists(ig, excludeId) {
-  var norm = normalizeIG(ig);
-  if (!norm) return null;
-  var all = state.data.prospects.concat(state.data.pnms);
-  for (var i = 0; i < all.length; i++) {
-    if (all[i].id !== excludeId && normalizeIG(all[i].instagram) === norm) return all[i];
-  }
-  return null;
-}
-
-function addProspect(fields) {
+async function addProspect(fields) {
   var p = {
     id: uid(), name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "",
     major: "", classYear: "", vouchedBy: "", outreachStatus: "Uncontacted", notes: "",
@@ -423,23 +499,24 @@ function addProspect(fields) {
     createdAt: today(), promotedToPnm: null
   };
   for (var k in fields) p[k] = fields[k];
-  state.data.prospects.unshift(p);
-  persist();
+  var saved = await withData(function (d) { d.prospects.unshift(p); });
+  if (!saved) return false;
   showToast("Added " + p.name + " to Scouting", "success");
   return true;
 }
-function editProspect(id, patch) {
-  var p = state.data.prospects.find(function (x) { return x.id === id; });
-  if (!p) return;
-  for (var k in patch) p[k] = patch[k];
-  persist();
+async function editProspect(id, patch) {
+  await withData(function (d) {
+    var p = d.prospects.find(function (x) { return x.id === id; });
+    if (!p) return;
+    for (var k in patch) p[k] = patch[k];
+  });
 }
-function deleteProspect(id) {
-  state.data.prospects = state.data.prospects.filter(function (p) { return p.id !== id; });
-  persist();
+async function deleteProspect(id) {
+  await withData(function (d) { d.prospects = d.prospects.filter(function (p) { return p.id !== id; }); });
 }
-function promoteToPNM(prospectId) {
-  var p = state.data.prospects.find(function (x) { return x.id === prospectId; });
+async function promoteToPNM(prospectId) {
+  var fresh = await fetchAppData();
+  var p = fresh.prospects.find(function (x) { return x.id === prospectId; });
   if (!p) return;
   var pnm = {
     id: uid(), name: p.name, phone: p.phone, email: p.email, instagram: p.instagram,
@@ -448,75 +525,62 @@ function promoteToPNM(prospectId) {
     eventsAttended: [], notes: p.notes ? [{ id: uid(), author: p.vouchedBy || "Scouting", text: p.notes, date: today() }] : [],
     votes: {}, promotedFromProspectId: p.id, createdAt: p.createdAt, promotedAt: today()
   };
-  state.data.pnms.unshift(pnm);
+  fresh.pnms.unshift(pnm);
   p.promotedToPnm = pnm.id;
-  persist();
+  await saveAppData(fresh);
+  state.data = fresh;
   state.tab = "tracker";
   renderApp();
   showToast(pnm.name + " promoted to active rush!", "success");
 }
 
-function addPnmQuick(fields) {
+async function addPnmQuick(fields) {
   var pnm = {
     id: uid(), name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "",
     major: "", classYear: "", vouchedBy: "", jewish: "TBD", legacy: "TBD", connections: "", vibeRating: 0, stage: "Discovered",
     eventsAttended: [], notes: [], votes: {}, promotedFromProspectId: null, createdAt: today()
   };
   for (var k in fields) pnm[k] = fields[k];
-  state.data.pnms.unshift(pnm);
-  persist();
+  await withData(function (d) { d.pnms.unshift(pnm); });
   return pnm;
 }
-function editPnm(id, patch) {
-  var p = state.data.pnms.find(function (x) { return x.id === id; });
-  if (!p) return null;
-  for (var k in patch) p[k] = patch[k];
-  persist();
-  return p;
+async function editPnm(id, patch) {
+  var result = null;
+  await withData(function (d) {
+    var p = d.pnms.find(function (x) { return x.id === id; });
+    if (!p) return;
+    for (var k in patch) p[k] = patch[k];
+    result = p;
+  });
+  return result;
 }
-function deletePnm(id) {
-  state.data.pnms = state.data.pnms.filter(function (p) { return p.id !== id; });
-  persist();
+async function deletePnm(id) {
+  await withData(function (d) { d.pnms = d.pnms.filter(function (p) { return p.id !== id; }); });
 }
-function movePnmStage(id, stage) { editPnm(id, { stage: stage }); }
-function addNote(id, author, text) {
-  if (!text || !text.trim()) return null;
-  var p = state.data.pnms.find(function (x) { return x.id === id; });
-  if (!p) return null;
-  var note = { id: uid(), author: author || "Anon", text: text, date: today() };
-  p.notes.push(note);
-  persist();
+async function movePnmStage(id, stage) { await editPnm(id, { stage: stage }); }
+// Note/event objects are built by the caller (so the id used for the
+// optimistic local UI update matches the id actually saved to Supabase).
+async function addNote(id, note) {
+  await withData(function (d) {
+    var p = d.pnms.find(function (x) { return x.id === id; });
+    if (p) p.notes.push(note);
+  });
   return note;
 }
-function addEvent(id, name, date) {
-  if (!name || !name.trim()) return null;
-  var p = state.data.pnms.find(function (x) { return x.id === id; });
-  if (!p) return null;
-  var ev = { id: uid(), name: name, date: date || today() };
-  p.eventsAttended.push(ev);
-  persist();
+async function addEvent(id, ev) {
+  await withData(function (d) {
+    var p = d.pnms.find(function (x) { return x.id === id; });
+    if (p) p.eventsAttended.push(ev);
+  });
   return ev;
 }
-function castVote(pnmId, voter, choice) {
-  if (!voter) { showToast("Pick your name first (top right) to vote", "error"); return; }
-  var p = state.data.pnms.find(function (x) { return x.id === pnmId; });
-  if (!p) return;
-  p.votes[voter] = choice;
-  persist();
+async function castVote(pnmId, voter, choice) {
+  if (!voter) { showToast("You need to be signed in to vote", "error"); return; }
+  await withData(function (d) {
+    var p = d.pnms.find(function (x) { return x.id === pnmId; });
+    if (p) p.votes[voter] = choice;
+  });
 }
-function addBrother(name) {
-  var clean = (name || "").trim();
-  if (!clean) return;
-  var exists = state.data.brothers.some(function (b) { return b.toLowerCase() === clean.toLowerCase(); });
-  if (exists) return;
-  state.data.brothers.push(clean);
-  persist();
-}
-function removeBrother(name) {
-  state.data.brothers = state.data.brothers.filter(function (b) { return b !== name; });
-  persist();
-}
-function setCurrentVoter(name) { state.data.currentVoter = name; persist(); }
 
 function exportJSON() {
   var blob = new Blob([JSON.stringify(state.data, null, 2)], { type: "application/json" });
@@ -528,13 +592,14 @@ function exportJSON() {
 }
 function importJSON(file) {
   var reader = new FileReader();
-  reader.onload = function () {
+  reader.onload = async function () {
     try {
       var parsed = JSON.parse(reader.result);
       var d = defaultData();
       for (var k in d) if (parsed[k] !== undefined) d[k] = parsed[k];
-      state.data = migrateData(d);
-      persist();
+      var merged = migrateData(d);
+      await saveAppData(merged);
+      state.data = merged;
       renderApp();
       showToast("Data imported", "success");
     } catch (e) { showToast("Import failed — invalid file", "error"); }
@@ -560,19 +625,12 @@ var TABS = [
   { id: "scouting", label: "Scouting" },
   { id: "tracker", label: "Rush Tracker" },
   { id: "deliberations", label: "Deliberations" },
-  { id: "roster", label: "Roster" }
+  { id: "team", label: "Team" }
 ];
 function renderHeader() {
   var container = document.getElementById("sidebar");
-  var voterSelect = el("select", {
-    class: "input",
-    title: "Who are you? (used for votes & notes)",
-    onchange: function (e) { setCurrentVoter(e.target.value); }
-  },
-    el("option", { value: "" }, "I am…"),
-    state.data.brothers.map(function (b) { return el("option", { value: b, selected: state.data.currentVoter === b }, b); })
-  );
   var fileInput = el("input", { type: "file", accept: "application/json", class: "hidden", onchange: function (e) { if (e.target.files[0]) importJSON(e.target.files[0]); } });
+  var isAdmin = state.profile && state.profile.role === "admin";
 
   var inner = el("div", { class: "sidebar-inner" },
     el("div", { class: "brand" },
@@ -590,14 +648,20 @@ function renderHeader() {
     })),
     el("div", { class: "header-actions" },
       el("button", { class: "btn btn-ghost btn-sm", onclick: exportJSON }, "Export"),
-      el("button", { class: "btn btn-ghost btn-sm", onclick: function () { fileInput.click(); } }, "Import"),
+      isAdmin ? el("button", { class: "btn btn-ghost btn-sm", onclick: function () { fileInput.click(); } }, "Import") : null,
       fileInput
     )
   );
   mount(container, inner);
 
   var topbar = document.getElementById("topbar");
-  if (topbar) mount(topbar, voterSelect);
+  if (topbar) {
+    mount(topbar, el("div", { class: "user-chip" },
+      el("span", {}, state.profile ? state.profile.name : ""),
+      isAdmin ? el("span", { class: "role-pill" }, "Admin") : null,
+      el("button", { class: "btn-xs", onclick: function () { signOut(); } }, "Sign out")
+    ));
+  }
 }
 
 /* =================================================================
@@ -634,7 +698,7 @@ function field(label, node) {
   return el("label", { class: "field" }, el("span", { class: "field-label" }, label), node);
 }
 function brotherDatalist(idAttr) {
-  return el("datalist", { id: idAttr }, state.data.brothers.map(function (b) { return el("option", { value: b }); }));
+  return el("datalist", { id: idAttr }, state.approvedProfiles.map(function (b) { return el("option", { value: b.name }); }));
 }
 
 function openProspectModal(prospect) {
@@ -679,7 +743,7 @@ function renderProspectModal() {
     el("div", { class: "modal-footer" },
       el("button", { class: "btn btn-ghost", type: "button", onclick: closeModal }, "Cancel"),
       el("button", {
-        class: "btn btn-primary", type: "button", onclick: function () {
+        class: "btn btn-primary", type: "button", onclick: async function () {
           if (!nameI.value.trim()) { nameI.focus(); return; }
           var fields = {
             name: nameI.value.trim(), instagram: igI.value.trim(), phone: phoneI.value.trim(), email: emailI.value.trim(),
@@ -688,8 +752,8 @@ function renderProspectModal() {
             jewish: jewishI.value, legacy: legacyI.value, connections: connectionsI.value.trim()
           };
           var ok = true;
-          if (editing) editProspect(editing.id, fields);
-          else ok = addProspect(fields);
+          if (editing) await editProspect(editing.id, fields);
+          else ok = await addProspect(fields);
           if (ok) { closeModal(); renderTabContent(); }
         }
       }, "Save")
@@ -708,9 +772,9 @@ function renderQuickAddModal() {
   var legacyI = yesNoTbdSelect("TBD");
   var connectionsI = el("input", { class: "input", placeholder: "Brother they know from childhood (optional)", list: "brothers-dl-qa" });
 
-  function submit() {
+  async function submit() {
     if (!nameI.value.trim()) { nameI.focus(); return; }
-    var ok = addProspect({
+    var ok = await addProspect({
       name: nameI.value.trim(), instagram: igI.value.trim(), phone: phoneI.value.trim(),
       hometown: hometownI.value.trim(), highSchool: schoolI.value.trim(),
       jewish: jewishI.value, legacy: legacyI.value, connections: connectionsI.value.trim()
@@ -744,7 +808,7 @@ function buildProspectCard(p) {
     p.email ? el("div", { class: "row" }, "✉️ " + p.email) : null,
     p.classYear ? el("div", { class: "row" }, "🎓 Class of " + p.classYear) : null,
     el("div", { style: { display: "flex", gap: "10px", marginTop: "4px" } },
-      el("button", { class: "btn-xs", style: { textDecoration: "underline", color: "#fca5a5" }, onclick: function (e) { e.stopPropagation(); deleteProspect(p.id); renderTabContent(); } }, "Delete")
+      el("button", { class: "btn-xs", style: { textDecoration: "underline", color: "#fca5a5" }, onclick: async function (e) { e.stopPropagation(); await deleteProspect(p.id); renderTabContent(); } }, "Delete")
     )
   );
   var toggleBtn = el("button", { class: "btn-xs", style: { fontSize: "13px" } }, "▾");
@@ -768,18 +832,18 @@ function buildProspectCard(p) {
   if (isNotInterested) {
     actions.appendChild(el("button", {
       class: "btn btn-ghost btn-sm",
-      onclick: function (e) { e.stopPropagation(); editProspect(p.id, { outreachStatus: "Uncontacted" }); renderTabContent(); }
+      onclick: async function (e) { e.stopPropagation(); await editProspect(p.id, { outreachStatus: "Uncontacted" }); renderTabContent(); }
     }, "↺ Reconsider"));
   } else {
     if (idx < OUTREACH_STATUSES.length - 1) {
       actions.appendChild(el("button", {
         class: "btn btn-ghost btn-sm",
-        onclick: function (e) { e.stopPropagation(); editProspect(p.id, { outreachStatus: OUTREACH_STATUSES[idx + 1] }); renderTabContent(); }
+        onclick: async function (e) { e.stopPropagation(); await editProspect(p.id, { outreachStatus: OUTREACH_STATUSES[idx + 1] }); renderTabContent(); }
       }, "→ " + OUTREACH_STATUSES[idx + 1]));
     }
     actions.appendChild(el("button", {
       class: "btn btn-ghost btn-sm", style: { color: "#fca5a5" },
-      onclick: function (e) { e.stopPropagation(); editProspect(p.id, { outreachStatus: NOT_INTERESTED }); renderTabContent(); }
+      onclick: async function (e) { e.stopPropagation(); await editProspect(p.id, { outreachStatus: NOT_INTERESTED }); renderTabContent(); }
     }, "Not Interested"));
     actions.appendChild(el("button", {
       class: "btn btn-primary btn-sm", style: { marginLeft: "auto" },
@@ -811,10 +875,16 @@ function renderScouting() {
   var hometownSel = el("select", { class: "input", onchange: function (e) { state.scoutingHometown = e.target.value; refreshScoutingColumns(); } });
   var schoolSel = el("select", { class: "input", onchange: function (e) { state.scoutingSchool = e.target.value; refreshScoutingColumns(); } });
   var majorSel = el("select", { class: "input", onchange: function (e) { state.scoutingMajor = e.target.value; refreshScoutingColumns(); } });
+  var jewishSel = el("select", { class: "input", onchange: function (e) { state.scoutingJewish = e.target.value; refreshScoutingColumns(); } },
+    el("option", { value: "" }, "Jewish: All"),
+    el("option", { value: "Yes", selected: state.scoutingJewish === "Yes" }, "Jewish: Yes"),
+    el("option", { value: "No", selected: state.scoutingJewish === "No" }, "Jewish: No"),
+    el("option", { value: "TBD", selected: state.scoutingJewish === "TBD" }, "Jewish: TBD")
+  );
   var searchI = el("input", { class: "input", placeholder: "Search name or @instagram…", value: state.scoutingSearch, oninput: function (e) { state.scoutingSearch = e.target.value; refreshScoutingColumns(); } });
 
   var filterBar = el("div", { class: "filter-bar" },
-    searchI, hometownSel, schoolSel, majorSel,
+    searchI, hometownSel, schoolSel, majorSel, jewishSel,
     el("button", { class: "btn btn-ghost", style: { marginLeft: "auto" }, onclick: renderQuickAddModal }, "⚡ Quick Add"),
     el("button", { class: "btn btn-primary", onclick: function () { openProspectModal(null); } }, "+ Add Prospect")
   );
@@ -853,7 +923,8 @@ function fillScoutingColumns(container) {
     return matchesSearch &&
       (!state.scoutingHometown || p.hometown === state.scoutingHometown) &&
       (!state.scoutingSchool || p.highSchool === state.scoutingSchool) &&
-      (!state.scoutingMajor || p.major === state.scoutingMajor);
+      (!state.scoutingMajor || p.major === state.scoutingMajor) &&
+      (!state.scoutingJewish || (p.jewish || "TBD") === state.scoutingJewish);
   });
   SCOUTING_COLUMNS.forEach(function (status) {
     var list = filtered.filter(function (p) { return (p.outreachStatus || "Uncontacted") === status; });
@@ -906,14 +977,14 @@ function renderQuickLogModal() {
     field("Set stage to", stageSel),
     el("button", {
       class: "btn btn-primary", style: { width: "100%", padding: "11px", fontSize: "14.5px" }, type: "button",
-      onclick: function () {
+      onclick: async function () {
         var usingExisting = !existingWrap.classList.contains("hidden");
         if (usingExisting) {
           if (!existingSel.value) return;
-          movePnmStage(existingSel.value, stageSel.value);
+          await movePnmStage(existingSel.value, stageSel.value);
         } else {
           if (!newNameI.value.trim()) return;
-          addPnmQuick({ name: newNameI.value.trim(), vouchedBy: vouchI.value.trim(), stage: stageSel.value });
+          await addPnmQuick({ name: newNameI.value.trim(), vouchedBy: vouchI.value.trim(), stage: stageSel.value });
         }
         closeModal();
         renderTabContent();
@@ -924,31 +995,37 @@ function renderQuickLogModal() {
 }
 
 function renderPnmDetailModal(pnm) {
+  // Optimistic helper: update the field on screen instantly, save in the background.
+  function edit(patch) {
+    for (var k in patch) pnm[k] = patch[k];
+    editPnm(pnm.id, patch);
+  }
+
   var starsContainer = el("div", {});
   function refreshStars() {
     clearNode(starsContainer);
     starsContainer.appendChild(starRow(pnm.vibeRating, function (v) {
-      editPnm(pnm.id, { vibeRating: v });
+      edit({ vibeRating: v });
       refreshStars();
     }));
   }
   refreshStars();
 
-  var nameI = el("input", { class: "input", value: pnm.name, onblur: function (e) { editPnm(pnm.id, { name: e.target.value }); } });
-  var igI = el("input", { class: "input", value: pnm.instagram, onblur: function (e) { editPnm(pnm.id, { instagram: e.target.value }); } });
-  var phoneI = el("input", { class: "input", value: pnm.phone, onblur: function (e) { editPnm(pnm.id, { phone: e.target.value }); } });
-  var emailI = el("input", { class: "input", value: pnm.email, onblur: function (e) { editPnm(pnm.id, { email: e.target.value }); } });
-  var hometownI = el("input", { class: "input", value: pnm.hometown, onblur: function (e) { editPnm(pnm.id, { hometown: e.target.value }); } });
-  var schoolI = el("input", { class: "input", value: pnm.highSchool, onblur: function (e) { editPnm(pnm.id, { highSchool: e.target.value }); } });
-  var majorI = el("input", { class: "input", value: pnm.major, onblur: function (e) { editPnm(pnm.id, { major: e.target.value }); } });
-  var yearI = el("input", { class: "input", value: pnm.classYear, onblur: function (e) { editPnm(pnm.id, { classYear: e.target.value }); } });
-  var vouchI = el("input", { class: "input", value: pnm.vouchedBy, list: "brothers-dl-3", onblur: function (e) { editPnm(pnm.id, { vouchedBy: e.target.value }); } });
-  var stageSel = el("select", { class: "input", onchange: function (e) { editPnm(pnm.id, { stage: e.target.value }); } },
+  var nameI = el("input", { class: "input", value: pnm.name, onblur: function (e) { edit({ name: e.target.value }); } });
+  var igI = el("input", { class: "input", value: pnm.instagram, onblur: function (e) { edit({ instagram: e.target.value }); } });
+  var phoneI = el("input", { class: "input", value: pnm.phone, onblur: function (e) { edit({ phone: e.target.value }); } });
+  var emailI = el("input", { class: "input", value: pnm.email, onblur: function (e) { edit({ email: e.target.value }); } });
+  var hometownI = el("input", { class: "input", value: pnm.hometown, onblur: function (e) { edit({ hometown: e.target.value }); } });
+  var schoolI = el("input", { class: "input", value: pnm.highSchool, onblur: function (e) { edit({ highSchool: e.target.value }); } });
+  var majorI = el("input", { class: "input", value: pnm.major, onblur: function (e) { edit({ major: e.target.value }); } });
+  var yearI = el("input", { class: "input", value: pnm.classYear, onblur: function (e) { edit({ classYear: e.target.value }); } });
+  var vouchI = el("input", { class: "input", value: pnm.vouchedBy, list: "brothers-dl-3", onblur: function (e) { edit({ vouchedBy: e.target.value }); } });
+  var stageSel = el("select", { class: "input", onchange: function (e) { edit({ stage: e.target.value }); } },
     STAGES.map(function (s) { return el("option", { value: s, selected: pnm.stage === s }, s); })
   );
-  var jewishI = yesNoTbdSelect(pnm.jewish, function (v) { editPnm(pnm.id, { jewish: v }); });
-  var legacyI = yesNoTbdSelect(pnm.legacy, function (v) { editPnm(pnm.id, { legacy: v }); });
-  var connectionsI = el("input", { class: "input", value: pnm.connections, list: "brothers-dl-3", onblur: function (e) { editPnm(pnm.id, { connections: e.target.value }); } });
+  var jewishI = yesNoTbdSelect(pnm.jewish, function (v) { edit({ jewish: v }); });
+  var legacyI = yesNoTbdSelect(pnm.legacy, function (v) { edit({ legacy: v }); });
+  var connectionsI = el("input", { class: "input", value: pnm.connections, list: "brothers-dl-3", onblur: function (e) { edit({ connections: e.target.value }); } });
 
   var eventsList = el("div", { class: "mini-list" });
   function refreshEvents() {
@@ -963,7 +1040,9 @@ function renderPnmDetailModal(pnm) {
   var addEventBtn = el("button", {
     class: "btn btn-ghost", type: "button", onclick: function () {
       if (!eventNameI.value.trim()) return;
-      addEvent(pnm.id, eventNameI.value.trim());
+      var ev = { id: uid(), name: eventNameI.value.trim(), date: today() };
+      pnm.eventsAttended.push(ev);
+      addEvent(pnm.id, ev);
       eventNameI.value = "";
       refreshEvents();
     }
@@ -978,11 +1057,14 @@ function renderPnmDetailModal(pnm) {
     });
   }
   refreshNotes();
-  var noteI = el("input", { class: "input", placeholder: "Add a note as " + (state.data.currentVoter || "…") });
+  var noteI = el("input", { class: "input", placeholder: "Add a note as " + (state.profile ? state.profile.name : "…") });
   var addNoteBtn = el("button", {
     class: "btn btn-ghost", type: "button", onclick: function () {
       if (!noteI.value.trim()) return;
-      addNote(pnm.id, state.data.currentVoter, noteI.value.trim());
+      var author = state.profile ? state.profile.name : "Anon";
+      var note = { id: uid(), author: author, text: noteI.value.trim(), date: today() };
+      pnm.notes.push(note);
+      addNote(pnm.id, note);
       noteI.value = "";
       refreshNotes();
     }
@@ -1013,7 +1095,7 @@ function renderPnmDetailModal(pnm) {
       el("div", { class: "inline-add" }, noteI, addNoteBtn)
     ),
     el("div", { class: "modal-footer between section-divider" },
-      el("button", { class: "btn btn-danger", type: "button", onclick: function () { deletePnm(pnm.id); closeModal(); renderTabContent(); } }, "Delete PNM"),
+      el("button", { class: "btn btn-danger", type: "button", onclick: async function () { await deletePnm(pnm.id); closeModal(); renderTabContent(); } }, "Delete PNM"),
       el("button", { class: "btn btn-primary", type: "button", onclick: function () { closeModal(); renderTabContent(); } }, "Done")
     )
   );
@@ -1024,10 +1106,10 @@ function buildKanbanCard(pnm) {
   var votesArr = Object.keys(pnm.votes || {}).map(function (k) { return pnm.votes[k]; });
   var deleteBtn = el("button", {
     class: "k-delete", type: "button", title: "Delete " + pnm.name,
-    onclick: function (e) {
+    onclick: async function (e) {
       e.stopPropagation();
       if (confirm("Delete " + pnm.name + "? This can't be undone.")) {
-        deletePnm(pnm.id);
+        await deletePnm(pnm.id);
         renderTabContent();
       }
     }
@@ -1073,11 +1155,11 @@ function renderTracker() {
     );
     col.addEventListener("dragover", function (e) { e.preventDefault(); col.classList.add("drop-hover"); });
     col.addEventListener("dragleave", function () { col.classList.remove("drop-hover"); });
-    col.addEventListener("drop", function (e) {
+    col.addEventListener("drop", async function (e) {
       e.preventDefault();
       col.classList.remove("drop-hover");
       var id = e.dataTransfer.getData("text/plain") || draggedPnmId;
-      if (id) movePnmStage(id, stage);
+      if (id) await movePnmStage(id, stage);
       renderTabContent();
     });
     kanban.appendChild(col);
@@ -1091,7 +1173,7 @@ function renderTracker() {
 ================================================================= */
 function buildVoteBar(pnm) {
   var votes = Object.keys(pnm.votes || {}).map(function (k) { return pnm.votes[k]; });
-  var total = state.data.brothers.length > 0 ? state.data.brothers.length : Math.max(votes.length, 1);
+  var total = state.approvedProfiles.length > 0 ? state.approvedProfiles.length : Math.max(votes.length, 1);
   var yes = votes.filter(function (v) { return v === "yes"; }).length;
   var no = votes.filter(function (v) { return v === "no"; }).length;
   var discuss = votes.filter(function (v) { return v === "discuss"; }).length;
@@ -1112,6 +1194,7 @@ function buildVoteBar(pnm) {
 }
 
 function renderDeliberations() {
+  var voterName = state.profile ? state.profile.name : "";
   var eligible = state.data.pnms.filter(function (p) {
     return state.showAllStages ? p.stage !== "Dropped" : ADVANCED_STAGES.indexOf(p.stage) !== -1;
   });
@@ -1129,14 +1212,10 @@ function renderDeliberations() {
   );
   wrap.appendChild(headerRow);
 
-  if (!state.data.currentVoter) {
-    wrap.appendChild(el("div", { class: "voter-banner" }, 'Select your name in the top-right "I am…" menu to cast votes and leave notes.'));
-  }
-
   var listCol = el("div", { class: "pnm-list" });
   eligible.forEach(function (p) {
     var votes = Object.keys(p.votes || {}).map(function (k) { return p.votes[k]; });
-    var yesPct = state.data.brothers.length ? Math.round((votes.filter(function (v) { return v === "yes"; }).length / state.data.brothers.length) * 100) : 0;
+    var yesPct = state.approvedProfiles.length ? Math.round((votes.filter(function (v) { return v === "yes"; }).length / state.approvedProfiles.length) * 100) : 0;
     var item = el("button", {
       class: "pnm-list-item" + (state.selectedPnmId === p.id ? " selected" : ""),
       onclick: function () { state.selectedPnmId = p.id; renderTabContent(); }
@@ -1159,7 +1238,7 @@ function renderDeliberations() {
     var starsWrap = el("div", {});
     function refreshStars() {
       clearNode(starsWrap);
-      starsWrap.appendChild(starRow(selected.vibeRating, function (v) { editPnm(selected.id, { vibeRating: v }); refreshStars(); }));
+      starsWrap.appendChild(starRow(selected.vibeRating, function (v) { selected.vibeRating = v; editPnm(selected.id, { vibeRating: v }); refreshStars(); }));
     }
     refreshStars();
 
@@ -1172,11 +1251,13 @@ function renderDeliberations() {
       });
     }
     refreshNotes();
-    var noteI = el("input", { class: "input", placeholder: "Add a note as " + (state.data.currentVoter || "…") });
+    var noteI = el("input", { class: "input", placeholder: "Add a note as " + (voterName || "…") });
     var addNoteBtn = el("button", {
       class: "btn btn-ghost", onclick: function () {
         if (!noteI.value.trim()) return;
-        addNote(selected.id, state.data.currentVoter, noteI.value.trim());
+        var note = { id: uid(), author: voterName, text: noteI.value.trim(), date: today() };
+        selected.notes.push(note);
+        addNote(selected.id, note);
         noteI.value = "";
         refreshNotes();
       }
@@ -1184,18 +1265,19 @@ function renderDeliberations() {
 
     var voteBarWrap = el("div", {});
     voteBarWrap.appendChild(buildVoteBar(selected));
-    var yesBtn = el("button", { class: "vote-btn yes" + (selected.votes[state.data.currentVoter] === "yes" ? " active" : "") }, "Yes");
-    var discussBtn = el("button", { class: "vote-btn discuss" + (selected.votes[state.data.currentVoter] === "discuss" ? " active" : "") }, "Discuss");
-    var noBtn = el("button", { class: "vote-btn no" + (selected.votes[state.data.currentVoter] === "no" ? " active" : "") }, "No");
+    var yesBtn = el("button", { class: "vote-btn yes" + (selected.votes[voterName] === "yes" ? " active" : "") }, "Yes");
+    var discussBtn = el("button", { class: "vote-btn discuss" + (selected.votes[voterName] === "discuss" ? " active" : "") }, "Discuss");
+    var noBtn = el("button", { class: "vote-btn no" + (selected.votes[voterName] === "no" ? " active" : "") }, "No");
     function refreshVoteRow() {
-      yesBtn.className = "vote-btn yes" + (selected.votes[state.data.currentVoter] === "yes" ? " active" : "");
-      discussBtn.className = "vote-btn discuss" + (selected.votes[state.data.currentVoter] === "discuss" ? " active" : "");
-      noBtn.className = "vote-btn no" + (selected.votes[state.data.currentVoter] === "no" ? " active" : "");
+      yesBtn.className = "vote-btn yes" + (selected.votes[voterName] === "yes" ? " active" : "");
+      discussBtn.className = "vote-btn discuss" + (selected.votes[voterName] === "discuss" ? " active" : "");
+      noBtn.className = "vote-btn no" + (selected.votes[voterName] === "no" ? " active" : "");
       clearNode(voteBarWrap); voteBarWrap.appendChild(buildVoteBar(selected));
     }
-    yesBtn.addEventListener("click", function () { castVote(selected.id, state.data.currentVoter, "yes"); refreshVoteRow(); refreshListMeta(); });
-    discussBtn.addEventListener("click", function () { castVote(selected.id, state.data.currentVoter, "discuss"); refreshVoteRow(); refreshListMeta(); });
-    noBtn.addEventListener("click", function () { castVote(selected.id, state.data.currentVoter, "no"); refreshVoteRow(); refreshListMeta(); });
+    function vote(choice) { selected.votes[voterName] = choice; castVote(selected.id, voterName, choice); refreshVoteRow(); refreshListMeta(); }
+    yesBtn.addEventListener("click", function () { vote("yes"); });
+    discussBtn.addEventListener("click", function () { vote("discuss"); });
+    noBtn.addEventListener("click", function () { vote("no"); });
     function refreshListMeta() { renderTabContent(); }
 
     dossierCol.appendChild(el("div", { class: "dossier-head" },
@@ -1232,40 +1314,101 @@ function renderDeliberations() {
 }
 
 /* =================================================================
-   Roster tab
+   Team tab — approved brothers list, plus admin approval panel
 ================================================================= */
-function renderRoster() {
-  var nameI = el("input", { class: "input", placeholder: "Brother's name" });
-  var list = el("div", {});
-  function refreshList() {
-    clearNode(list);
-    if (state.data.brothers.length === 0) list.appendChild(el("div", { class: "empty-state" }, "No brothers added yet"));
-    state.data.brothers.forEach(function (b) {
-      list.appendChild(el("div", { class: "roster-row" },
-        el("span", { style: { fontSize: "13px" } }, b),
-        el("button", { class: "btn-xs", style: { color: "#fca5a5" }, onclick: function () { removeBrother(b); refreshList(); renderHeader(); } }, "Remove")
-      ));
-    });
-  }
-  refreshList();
-  function submitAdd() {
-    if (!nameI.value.trim()) return;
-    addBrother(nameI.value.trim());
-    nameI.value = "";
-    refreshList();
-    renderHeader();
-  }
-  nameI.addEventListener("keydown", function (e) { if (e.key === "Enter") submitAdd(); });
+function renderTeam() {
+  var isAdmin = state.profile && state.profile.role === "admin";
+  var wrap = el("div", { class: "roster-wrap" });
 
-  return el("div", { class: "roster-wrap" },
-    el("h2", { class: "grad-heading", style: { marginBottom: "4px", fontSize: "16px" } }, "Active Chapter Roster"),
-    el("div", { class: "roster-hint" }, 'Used for "Vouched By", voter identity, and the vote % baseline in Deliberations.'),
-    el("div", { class: "inline-add", style: { marginBottom: "14px" } },
-      nameI,
-      el("button", { class: "btn btn-primary", onclick: submitAdd }, "Add")
-    ),
-    list
-  );
+  if (isAdmin) {
+    wrap.appendChild(el("h2", { class: "grad-heading", style: { marginBottom: "4px", fontSize: "16px" } }, "Pending Requests"));
+    wrap.appendChild(el("div", { class: "roster-hint" }, "New signups land here until you approve them — nobody can see PNM data until you do."));
+    var pendingList = el("div", { style: { marginBottom: "22px" } });
+    if (state.pendingProfiles.length === 0) {
+      pendingList.appendChild(el("div", { class: "empty-state" }, "No pending requests"));
+    } else {
+      state.pendingProfiles.forEach(function (p) {
+        pendingList.appendChild(el("div", { class: "approve-row" },
+          el("span", { style: { fontSize: "13px" } }, p.name),
+          el("div", { style: { display: "flex", gap: "6px" } },
+            el("button", { class: "btn btn-primary btn-sm", onclick: function () { approveProfile(p.id, "brother"); } }, "Approve"),
+            el("button", { class: "btn btn-ghost btn-sm", onclick: function () { approveProfile(p.id, "admin"); } }, "Make Admin")
+          )
+        ));
+      });
+    }
+    wrap.appendChild(pendingList);
+  }
+
+  wrap.appendChild(el("h2", { class: "grad-heading", style: { marginBottom: "4px", fontSize: "16px" } }, "Active Chapter Roster"));
+  wrap.appendChild(el("div", { class: "roster-hint" }, 'Everyone here can add/edit PNMs and vote. Used for "Vouched By" and the vote % baseline in Deliberations.'));
+  var list = el("div", {});
+  if (state.approvedProfiles.length === 0) list.appendChild(el("div", { class: "empty-state" }, "No approved brothers yet"));
+  state.approvedProfiles.forEach(function (b) {
+    list.appendChild(el("div", { class: "roster-row" },
+      el("span", { style: { fontSize: "13px" } }, b.name, b.role === "admin" ? el("span", { class: "role-pill" }, "Admin") : null),
+      isAdmin && b.id !== state.profile.id
+        ? el("button", { class: "btn-xs", style: { color: "#fca5a5" }, onclick: function () { approveProfile(b.id, "pending"); } }, "Revoke")
+        : null
+    ));
+  });
+  wrap.appendChild(list);
+  return wrap;
+}
+
+/* =================================================================
+   Auth gate — login/signup and pending-approval screens
+================================================================= */
+function renderGate() {
+  var root = document.getElementById("gate-root");
+  var content;
+  if (state.authView === "signup") {
+    var nameI = el("input", { class: "input", placeholder: "Full name", required: true });
+    var emailI = el("input", { class: "input", type: "email", placeholder: "Email", required: true });
+    var passI = el("input", { class: "input", type: "password", placeholder: "Password (6+ characters)", required: true });
+    content = el("div", { class: "auth-card" },
+      el("div", { class: "auth-brand" },
+        el("div", { class: "brand-logo", html: PULSE_ICON }),
+        el("div", { class: "brand-name" }, "RushPulse")
+      ),
+      state.authError ? el("div", { class: "auth-error" }, state.authError) : null,
+      field("Name", nameI), field("Email", emailI), field("Password", passI),
+      el("button", {
+        class: "btn btn-primary", style: { width: "100%", padding: "11px" },
+        onclick: function () { if (nameI.value.trim() && emailI.value.trim() && passI.value) signUp(nameI.value.trim(), emailI.value.trim(), passI.value); }
+      }, "Create Account"),
+      el("div", { class: "auth-toggle" }, "Already have an account? ",
+        el("button", { onclick: function () { state.authView = "login"; state.authError = ""; renderGate(); } }, "Log in"))
+    );
+  } else {
+    var emailI2 = el("input", { class: "input", type: "email", placeholder: "Email", required: true });
+    var passI2 = el("input", { class: "input", type: "password", placeholder: "Password", required: true });
+    content = el("div", { class: "auth-card" },
+      el("div", { class: "auth-brand" },
+        el("div", { class: "brand-logo", html: PULSE_ICON }),
+        el("div", { class: "brand-name" }, "RushPulse")
+      ),
+      state.authError ? el("div", { class: "auth-error" }, state.authError) : null,
+      field("Email", emailI2), field("Password", passI2),
+      el("button", {
+        class: "btn btn-primary", style: { width: "100%", padding: "11px" },
+        onclick: function () { if (emailI2.value.trim() && passI2.value) signIn(emailI2.value.trim(), passI2.value); }
+      }, "Log In"),
+      el("div", { class: "auth-toggle" }, "New here? ",
+        el("button", { onclick: function () { state.authView = "signup"; state.authError = ""; renderGate(); } }, "Create an account"))
+    );
+  }
+  mount(root, content);
+}
+function renderPendingGate() {
+  var root = document.getElementById("gate-root");
+  mount(root, el("div", { class: "pending-card" },
+    el("div", { class: "brand-logo", html: PULSE_ICON, style: { margin: "0 auto 14px" } }),
+    el("h3", { style: { margin: "0 0 8px" } }, "Waiting for approval"),
+    el("p", { style: { color: "var(--dimmer)", fontSize: "13px", margin: "0 0 18px" } },
+      "Your account is created — an admin (your Rush Chair) needs to approve you before you can see or edit anything."),
+    el("button", { class: "btn btn-ghost", onclick: function () { signOut(); } }, "Sign out")
+  ));
 }
 
 /* =================================================================
@@ -1277,14 +1420,68 @@ function renderTabContent() {
   if (state.tab === "scouting") root.appendChild(renderScouting());
   else if (state.tab === "tracker") root.appendChild(renderTracker());
   else if (state.tab === "deliberations") root.appendChild(renderDeliberations());
-  else if (state.tab === "roster") root.appendChild(renderRoster());
+  else if (state.tab === "team") root.appendChild(renderTeam());
 }
 function renderApp() {
   renderHeader();
   renderTabContent();
 }
+function showGateRoot() {
+  document.getElementById("gate-root").classList.remove("hidden");
+  document.getElementById("app-shell").classList.add("hidden");
+}
+function showApp() {
+  document.getElementById("gate-root").classList.add("hidden");
+  document.getElementById("app-shell").classList.remove("hidden");
+}
 
-renderApp();
+var realtimeSubscribed = false;
+function subscribeRealtime() {
+  if (realtimeSubscribed || !sb) return;
+  realtimeSubscribed = true;
+  sb.channel("app_data_changes")
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "app_data" }, function (payload) {
+      if (payload.new && payload.new.data) { state.data = migrateData(payload.new.data); renderTabContent(); }
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, function () {
+      fetchProfileLists().then(function () { renderHeader(); renderTabContent(); });
+    })
+    .subscribe();
+}
+
+/* =================================================================
+   Boot
+================================================================= */
+async function boot() {
+  if (!sb) {
+    document.getElementById("gate-root").innerHTML =
+      '<div class="auth-card"><h3 style="margin-top:0">Setup needed</h3>' +
+      '<p style="color:var(--dimmer);font-size:13px">This copy of RushPulse isn\'t connected to a database yet — paste your Supabase Project URL and anon key into the SUPABASE_URL / SUPABASE_ANON_KEY constants near the top of the script.</p></div>';
+    showGateRoot();
+    return;
+  }
+  var sessionRes = await sb.auth.getSession();
+  state.session = sessionRes.data ? sessionRes.data.session : null;
+  if (!state.session) {
+    state.profile = null;
+    renderGate();
+    showGateRoot();
+    return;
+  }
+  state.profile = await fetchProfile(state.session.user.id);
+  if (!state.profile || state.profile.role === "pending") {
+    renderPendingGate();
+    showGateRoot();
+    return;
+  }
+  await fetchProfileLists();
+  state.data = await fetchAppData();
+  subscribeRealtime();
+  showApp();
+  renderApp();
+}
+
+boot();
 </script>
 </body>
 </html>
