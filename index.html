@@ -45,13 +45,16 @@ a{color:inherit;}
 .brand-sub{font-size:11px;color:var(--dimmer);line-height:1.2;}
 @media(min-width:900px){.brand{margin-bottom:22px;}}
 
-.tabs{display:flex;gap:4px;background:rgba(255,255,255,.04);border-radius:12px;padding:4px;overflow-x:auto;order:3;flex:1 1 100%;}
-.tab-btn{border:none;background:transparent;color:var(--dim);font-weight:500;font-size:13px;padding:8px 12px;border-radius:9px;cursor:pointer;white-space:nowrap;transition:.15s;}
+.mobile-nav-toggle{display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex-shrink:0;border-radius:10px;background:rgba(255,255,255,.055);border:1px solid var(--border);color:var(--text);font-size:16px;cursor:pointer;order:1;}
+.mobile-nav-toggle:hover{background:rgba(255,255,255,.09);}
+.tabs{display:none;flex-direction:column;gap:3px;background:rgba(255,255,255,.04);border-radius:12px;padding:6px;order:4;flex:1 1 100%;width:100%;}
+.tabs.open{display:flex;}
+.tab-btn{text-align:left;border:none;background:transparent;color:var(--dim);font-weight:500;font-size:13px;padding:10px 12px;border-radius:9px;cursor:pointer;white-space:nowrap;transition:.15s;width:100%;}
 .tab-btn.active{background:linear-gradient(135deg,var(--indigo),var(--violet));color:#fff;box-shadow:0 3px 14px -3px rgba(147,51,234,.7);}
 .tab-btn:not(.active):hover{color:var(--text);background:rgba(255,255,255,.05);}
 @media(min-width:900px){
-  .tabs{flex-direction:column;background:none;padding:0;gap:3px;order:0;overflow-x:visible;}
-  .tab-btn{text-align:left;padding:10px 12px;width:100%;}
+  .mobile-nav-toggle{display:none;}
+  .tabs{display:flex;flex-direction:column;background:none;padding:0;gap:3px;order:0;width:auto;}
 }
 
 .header-actions{display:flex;align-items:center;gap:8px;order:2;margin-left:auto;}
@@ -483,6 +486,7 @@ var state = {
   authView: "login",       // 'login' | 'signup'
   authError: "",
   tab: "scouting",
+  mobileNavOpen: false,    // hamburger menu open state (mobile widths only)
   scoutingSearch: "", scoutingHometown: "", scoutingSchool: "", scoutingMajor: "", scoutingJewish: "",
   prospectModal: null,      // { mode:'add'|'edit', prospect }
   quickLogOpen: false,
@@ -687,10 +691,14 @@ function renderHeader() {
         el("div", { class: "brand-sub" }, "AEPi · Oregon Rush")
       )
     ),
-    el("div", { class: "tabs" }, TABS.map(function (t) {
+    el("button", {
+      type: "button", class: "mobile-nav-toggle", title: "Menu",
+      onclick: function () { state.mobileNavOpen = !state.mobileNavOpen; renderHeader(); }
+    }, "☰"),
+    el("div", { class: "tabs" + (state.mobileNavOpen ? " open" : "") }, TABS.map(function (t) {
       return el("button", {
         class: "tab-btn" + (state.tab === t.id ? " active" : ""),
-        onclick: function () { state.tab = t.id; renderApp(); }
+        onclick: function () { state.tab = t.id; state.mobileNavOpen = false; renderApp(); }
       }, t.label);
     })),
     el("div", { class: "header-actions" },
