@@ -212,10 +212,11 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 .vote-btn.yes{color:#7cf2c4;} .vote-btn.yes.active{background:var(--green);color:#04140d;}
 .vote-btn.discuss{color:#ffd27a;} .vote-btn.discuss.active{background:var(--amber);color:#241a02;}
 .vote-btn.no{color:#ff9db4;} .vote-btn.no.active{background:var(--red);color:#210505;}
+.vote-btn.abstain{color:var(--dim);} .vote-btn.abstain.active{background:var(--dimmer);color:#0c0c12;}
 .vote-bar{height:12px;border-radius:999px;overflow:hidden;display:flex;background:rgba(255,255,255,.08);}
-.vote-seg-yes{background:var(--green);} .vote-seg-discuss{background:var(--amber);} .vote-seg-no{background:var(--red);}
-.vote-meta{display:flex;justify-content:space-between;font-size:11px;margin-top:6px;}
-.vote-meta .y{color:#7cf2c4;} .vote-meta .d{color:#ffd27a;} .vote-meta .n{color:#ff9db4;}
+.vote-seg-yes{background:var(--green);} .vote-seg-discuss{background:var(--amber);} .vote-seg-no{background:var(--red);} .vote-seg-abstain{background:var(--dimmer);}
+.vote-meta{display:flex;flex-wrap:wrap;gap:4px 10px;justify-content:flex-start;font-size:11px;margin-top:6px;}
+.vote-meta .y{color:#7cf2c4;} .vote-meta .d{color:#ffd27a;} .vote-meta .n{color:#ff9db4;} .vote-meta .a{color:var(--dim);}
 .vote-total{font-size:11px;color:var(--dimmer);margin-top:4px;}
 .voter-banner{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#ffd27a;font-size:12px;border-radius:10px;padding:9px 12px;margin-bottom:14px;}
 .showall-label{margin-left:auto;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px;}
@@ -245,6 +246,16 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 .role-pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;background:rgba(139,127,255,.18);color:#c3bbff;margin-left:6px;}
 .user-chip{display:flex;align-items:center;gap:8px;background:rgba(21,21,29,.9);backdrop-filter:blur(8px);border:1px solid rgba(147,112,255,.3);padding:6px 12px;border-radius:12px;font-size:12.5px;box-shadow:0 6px 18px -6px rgba(0,0,0,.5);}
 .approve-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:6px;}
+
+/* events multi-select dropdown */
+.event-dropdown{position:relative;}
+.event-dropdown-trigger{text-align:left;cursor:pointer;color:var(--dimmer);}
+.event-dropdown-trigger.has-value{color:var(--text);}
+.event-dropdown-panel{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:20;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:4px;box-shadow:0 14px 34px -10px rgba(0,0,0,.65);}
+.event-dropdown-option{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--dim);}
+.event-dropdown-option:hover{background:rgba(255,255,255,.06);}
+.event-dropdown-option.selected{color:var(--text);}
+.event-dropdown-check{color:var(--green);font-weight:700;}
 </style>
 </head>
 <body>
@@ -567,10 +578,13 @@ async function addNote(id, note) {
   return note;
 }
 async function castVote(pnmId, voter, choice) {
+  // choice === null/undefined removes the vote entirely.
   if (!voter) { showToast("You need to be signed in to vote", "error"); return; }
   await withData(function (d) {
     var p = d.pnms.find(function (x) { return x.id === pnmId; });
-    if (p) p.votes[voter] = choice;
+    if (!p) return;
+    if (choice) p.votes[voter] = choice;
+    else delete p.votes[voter];
   });
 }
 
@@ -1028,22 +1042,55 @@ function renderPnmDetailModal(pnm) {
     });
   }
   refreshEvents();
-  var eventSel = el("select", { class: "input", multiple: true, size: 4 },
-    EVENT_OPTIONS.map(function (opt) {
+
+  // Closed-by-default dropdown: click to open, click an option to toggle a
+  // checkmark on it (stays open so you can pick more than one), click
+  // outside to close.
+  var eventsOpen = false;
+  var eventTrigger = el("button", { type: "button", class: "input event-dropdown-trigger" }, "Select events…");
+  var eventPanel = el("div", { class: "event-dropdown-panel hidden" });
+  function refreshEventTrigger() {
+    var names = pnm.eventsAttended.map(function (ev) { return ev.name; });
+    eventTrigger.textContent = names.length ? names.join(", ") : "Select events…";
+    eventTrigger.classList.toggle("has-value", names.length > 0);
+  }
+  function refreshEventPanel() {
+    clearNode(eventPanel);
+    EVENT_OPTIONS.forEach(function (opt) {
       var isSelected = pnm.eventsAttended.some(function (ev) { return ev.name === opt; });
-      return el("option", { value: opt, selected: isSelected }, opt);
-    })
-  );
-  eventSel.addEventListener("change", function () {
-    var selected = Array.prototype.filter.call(eventSel.options, function (o) { return o.selected; }).map(function (o) { return o.value; });
-    var newList = selected.map(function (name) {
-      var existing = pnm.eventsAttended.find(function (ev) { return ev.name === name; });
-      return existing || { id: uid(), name: name, date: today() };
+      eventPanel.appendChild(el("div", {
+        class: "event-dropdown-option" + (isSelected ? " selected" : ""),
+        onclick: function (e) {
+          e.stopPropagation();
+          if (isSelected) {
+            pnm.eventsAttended = pnm.eventsAttended.filter(function (ev) { return ev.name !== opt; });
+          } else {
+            pnm.eventsAttended.push({ id: uid(), name: opt, date: today() });
+          }
+          editPnm(pnm.id, { eventsAttended: pnm.eventsAttended });
+          refreshEventTrigger(); refreshEventPanel(); refreshEvents();
+        }
+      }, el("span", {}, opt), isSelected ? el("span", { class: "event-dropdown-check" }, "✓") : null));
     });
-    pnm.eventsAttended = newList;
-    editPnm(pnm.id, { eventsAttended: newList });
-    refreshEvents();
+  }
+  function closeEventPanel() {
+    eventsOpen = false;
+    eventPanel.classList.add("hidden");
+    document.removeEventListener("click", handleOutsideEventClick);
+  }
+  function handleOutsideEventClick(e) {
+    if (!eventDropdownWrap.contains(e.target)) closeEventPanel();
+  }
+  eventTrigger.addEventListener("click", function (e) {
+    e.stopPropagation();
+    if (eventsOpen) { closeEventPanel(); return; }
+    eventsOpen = true;
+    eventPanel.classList.remove("hidden");
+    document.addEventListener("click", handleOutsideEventClick);
   });
+  refreshEventTrigger();
+  refreshEventPanel();
+  var eventDropdownWrap = el("div", { class: "event-dropdown" }, eventTrigger, eventPanel);
 
   var notesList = el("div", { class: "mini-list" });
   function refreshNotes() {
@@ -1084,8 +1131,7 @@ function renderPnmDetailModal(pnm) {
     el("div", { class: "section-divider" },
       el("div", { class: "section-title" }, "Events Attended"),
       eventsList,
-      eventSel,
-      el("div", { style: { fontSize: "11px", color: "var(--dimmer)", marginTop: "4px" } }, "Hold ⌘ (or Ctrl) and click to select multiple")
+      eventDropdownWrap
     ),
     el("div", { class: "section-divider" },
       el("div", { class: "section-title" }, "Notes"),
@@ -1186,17 +1232,20 @@ function buildVoteBar(pnm) {
   var yes = votes.filter(function (v) { return v === "yes"; }).length;
   var no = votes.filter(function (v) { return v === "no"; }).length;
   var discuss = votes.filter(function (v) { return v === "discuss"; }).length;
+  var abstain = votes.filter(function (v) { return v === "abstain"; }).length;
   function pct(n) { return Math.round((n / total) * 100); }
   return el("div", {},
     el("div", { class: "vote-bar" },
       el("div", { class: "vote-seg-yes", style: { width: pct(yes) + "%" } }),
       el("div", { class: "vote-seg-discuss", style: { width: pct(discuss) + "%" } }),
-      el("div", { class: "vote-seg-no", style: { width: pct(no) + "%" } })
+      el("div", { class: "vote-seg-no", style: { width: pct(no) + "%" } }),
+      el("div", { class: "vote-seg-abstain", style: { width: pct(abstain) + "%" } })
     ),
     el("div", { class: "vote-meta" },
       el("span", { class: "y" }, "Yes " + yes + " (" + pct(yes) + "%)"),
       el("span", { class: "d" }, "Discuss " + discuss + " (" + pct(discuss) + "%)"),
-      el("span", { class: "n" }, "No " + no + " (" + pct(no) + "%)")
+      el("span", { class: "n" }, "No " + no + " (" + pct(no) + "%)"),
+      el("span", { class: "a" }, "Abstain " + abstain + " (" + pct(abstain) + "%)")
     ),
     el("div", { class: "vote-total" }, votes.length + " of " + total + " voted")
   );
@@ -1273,16 +1322,33 @@ function renderDeliberations() {
     var yesBtn = el("button", { class: "vote-btn yes" + (selected.votes[voterName] === "yes" ? " active" : "") }, "Yes");
     var discussBtn = el("button", { class: "vote-btn discuss" + (selected.votes[voterName] === "discuss" ? " active" : "") }, "Discuss");
     var noBtn = el("button", { class: "vote-btn no" + (selected.votes[voterName] === "no" ? " active" : "") }, "No");
+    var abstainBtn = el("button", { class: "vote-btn abstain" + (selected.votes[voterName] === "abstain" ? " active" : "") }, "Abstain");
+    var clearVoteBtn = el("button", { class: "btn-xs", style: { marginLeft: "auto" } }, "Clear my vote");
     function refreshVoteRow() {
       yesBtn.className = "vote-btn yes" + (selected.votes[voterName] === "yes" ? " active" : "");
       discussBtn.className = "vote-btn discuss" + (selected.votes[voterName] === "discuss" ? " active" : "");
       noBtn.className = "vote-btn no" + (selected.votes[voterName] === "no" ? " active" : "");
+      abstainBtn.className = "vote-btn abstain" + (selected.votes[voterName] === "abstain" ? " active" : "");
+      clearVoteBtn.style.display = selected.votes[voterName] ? "" : "none";
       clearNode(voteBarWrap); voteBarWrap.appendChild(buildVoteBar(selected));
     }
-    function vote(choice) { selected.votes[voterName] = choice; castVote(selected.id, voterName, choice); refreshVoteRow(); refreshListMeta(); }
+    // Clicking your current vote again removes it; picking a different one switches to it.
+    function vote(choice) {
+      var next = selected.votes[voterName] === choice ? null : choice;
+      if (next) selected.votes[voterName] = next; else delete selected.votes[voterName];
+      castVote(selected.id, voterName, next);
+      refreshVoteRow(); refreshListMeta();
+    }
     yesBtn.addEventListener("click", function () { vote("yes"); });
     discussBtn.addEventListener("click", function () { vote("discuss"); });
     noBtn.addEventListener("click", function () { vote("no"); });
+    abstainBtn.addEventListener("click", function () { vote("abstain"); });
+    clearVoteBtn.addEventListener("click", function () {
+      delete selected.votes[voterName];
+      castVote(selected.id, voterName, null);
+      refreshVoteRow(); refreshListMeta();
+    });
+    refreshVoteRow();
     function refreshListMeta() { renderTabContent(); }
 
     dossierCol.appendChild(el("div", { class: "dossier-head" },
@@ -1308,8 +1374,11 @@ function renderDeliberations() {
       el("div", { class: "inline-add" }, noteI, addNoteBtn)
     ));
     dossierCol.appendChild(el("div", { class: "section-divider" },
-      el("div", { class: "section-title" }, "Cast Your Vote"),
-      el("div", { class: "vote-row" }, yesBtn, discussBtn, noBtn),
+      el("div", { style: { display: "flex", alignItems: "center" } },
+        el("div", { class: "section-title", style: { marginBottom: 0 } }, "Cast Your Vote"),
+        clearVoteBtn
+      ),
+      el("div", { class: "vote-row", style: { marginTop: "8px" } }, yesBtn, discussBtn, noBtn, abstainBtn),
       voteBarWrap
     ));
   }
