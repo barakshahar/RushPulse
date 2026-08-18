@@ -270,6 +270,7 @@ var OUTREACH_STATUSES = ["Uncontacted", "Contacted", "Interested"];
 var NOT_INTERESTED = "Not Interested";
 var SCOUTING_COLUMNS = OUTREACH_STATUSES.concat([NOT_INTERESTED]);
 var STAGES = ["Discovered", "Attended Event", "Interview", "Invite Only", "Bid Extended", "Bid Accepted", "Dropped"];
+var EVENT_OPTIONS = ["Event 1", "Event 2", "Event 3", "Invite Only"];
 var PULSE_ICON = '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><path d="M5 22h6l3-12 5 22 4-16 2.5 6h11.5" fill="none" stroke="white" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /* =================================================================
@@ -564,13 +565,6 @@ async function addNote(id, note) {
     if (p) p.notes.push(note);
   });
   return note;
-}
-async function addEvent(id, ev) {
-  await withData(function (d) {
-    var p = d.pnms.find(function (x) { return x.id === id; });
-    if (p) p.eventsAttended.push(ev);
-  });
-  return ev;
 }
 async function castVote(pnmId, voter, choice) {
   if (!voter) { showToast("You need to be signed in to vote", "error"); return; }
@@ -1034,17 +1028,22 @@ function renderPnmDetailModal(pnm) {
     });
   }
   refreshEvents();
-  var eventNameI = el("input", { class: "input", placeholder: "Event name" });
-  var addEventBtn = el("button", {
-    class: "btn btn-ghost", type: "button", onclick: function () {
-      if (!eventNameI.value.trim()) return;
-      var ev = { id: uid(), name: eventNameI.value.trim(), date: today() };
-      pnm.eventsAttended.push(ev);
-      addEvent(pnm.id, ev);
-      eventNameI.value = "";
-      refreshEvents();
-    }
-  }, "Add");
+  var eventSel = el("select", { class: "input", multiple: true, size: 4 },
+    EVENT_OPTIONS.map(function (opt) {
+      var isSelected = pnm.eventsAttended.some(function (ev) { return ev.name === opt; });
+      return el("option", { value: opt, selected: isSelected }, opt);
+    })
+  );
+  eventSel.addEventListener("change", function () {
+    var selected = Array.prototype.filter.call(eventSel.options, function (o) { return o.selected; }).map(function (o) { return o.value; });
+    var newList = selected.map(function (name) {
+      var existing = pnm.eventsAttended.find(function (ev) { return ev.name === name; });
+      return existing || { id: uid(), name: name, date: today() };
+    });
+    pnm.eventsAttended = newList;
+    editPnm(pnm.id, { eventsAttended: newList });
+    refreshEvents();
+  });
 
   var notesList = el("div", { class: "mini-list" });
   function refreshNotes() {
@@ -1085,7 +1084,8 @@ function renderPnmDetailModal(pnm) {
     el("div", { class: "section-divider" },
       el("div", { class: "section-title" }, "Events Attended"),
       eventsList,
-      el("div", { class: "inline-add" }, eventNameI, addEventBtn)
+      eventSel,
+      el("div", { style: { fontSize: "11px", color: "var(--dimmer)", marginTop: "4px" } }, "Hold ⌘ (or Ctrl) and click to select multiple")
     ),
     el("div", { class: "section-divider" },
       el("div", { class: "section-title" }, "Notes"),
