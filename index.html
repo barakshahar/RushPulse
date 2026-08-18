@@ -297,12 +297,18 @@ var sb = (SUPABASE_URL.indexOf("PASTE_") !== 0 && window.supabase)
 
 /* =================================================================
    EmailJS — sends the "you're approved" email when an admin approves
-   a pending signup. Paste your own IDs from emailjs.com.
+   a pending signup, and a "new signup waiting" email to admins the
+   moment someone signs up. Paste your own IDs from emailjs.com.
 ================================================================= */
 var EMAILJS_SERVICE_ID = "service_ldbs1bq";
 var EMAILJS_TEMPLATE_ID = "template_lqe2o9f";
 var EMAILJS_PUBLIC_KEY = "Xz_HYMwGWt-fidp82";
 var SITE_URL = "https://barakshahar.github.io/RushPulse/";
+// New-signup notification template — set this up in EmailJS the same way
+// as the approval one (see setup notes in chat), then paste its ID here.
+var EMAILJS_NEW_SIGNUP_TEMPLATE_ID = "template_9a4h28h";
+// Every admin listed here gets emailed the moment someone signs up.
+var ADMIN_NOTIFY_EMAILS = ["barak.shahar0702@gmail.com"];
 if (EMAILJS_PUBLIC_KEY.indexOf("PASTE_") !== 0 && window.emailjs) {
   emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
 }
@@ -311,6 +317,14 @@ function sendApprovalEmail(email, name) {
   emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
     to_email: email, to_name: name || "there", login_link: SITE_URL
   }).catch(function (e) { console.error("RushPulse: approval email failed", e); });
+}
+function sendNewSignupNotification(signupName, signupEmail) {
+  if (EMAILJS_NEW_SIGNUP_TEMPLATE_ID.indexOf("PASTE_") === 0 || !window.emailjs) return;
+  ADMIN_NOTIFY_EMAILS.forEach(function (adminEmail) {
+    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_NEW_SIGNUP_TEMPLATE_ID, {
+      to_email: adminEmail, signup_name: signupName || "Someone", signup_email: signupEmail || "", login_link: SITE_URL
+    }).catch(function (e) { console.error("RushPulse: new-signup notification failed", e); });
+  });
 }
 
 function uid() {
@@ -496,6 +510,7 @@ async function signUp(name, email, password) {
   state.authError = "";
   var res = await sb.auth.signUp({ email: email, password: password, options: { data: { name: name } } });
   if (res.error) { state.authError = res.error.message; renderGate(); return; }
+  sendNewSignupNotification(name, email);
   await boot();
 }
 async function signIn(email, password) {
