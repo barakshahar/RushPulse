@@ -271,6 +271,7 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 <div id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script>
 "use strict";
 
@@ -293,6 +294,24 @@ var SUPABASE_ANON_KEY = "sb_publishable_Zzl59TuP11cNnFHCxwjS3Q_4y9KahiJ";
 var sb = (SUPABASE_URL.indexOf("PASTE_") !== 0 && window.supabase)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
+
+/* =================================================================
+   EmailJS — sends the "you're approved" email when an admin approves
+   a pending signup. Paste your own IDs from emailjs.com.
+================================================================= */
+var EMAILJS_SERVICE_ID = "service_ldbs1bq";
+var EMAILJS_TEMPLATE_ID = "template_lqe2o9f";
+var EMAILJS_PUBLIC_KEY = "Xz_HYMwGWt-fidp82";
+var SITE_URL = "https://barakshahar.github.io/RushPulse/";
+if (EMAILJS_PUBLIC_KEY.indexOf("PASTE_") !== 0 && window.emailjs) {
+  emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+}
+function sendApprovalEmail(email, name) {
+  if (EMAILJS_SERVICE_ID.indexOf("PASTE_") === 0 || !window.emailjs || !email) return;
+  emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+    to_email: email, to_name: name || "there", login_link: SITE_URL
+  }).catch(function (e) { console.error("RushPulse: approval email failed", e); });
+}
 
 function uid() {
   if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -490,9 +509,16 @@ async function signOut() {
   state.session = null; state.profile = null; state.data = defaultData();
   await boot();
 }
-async function approveProfile(id, role) {
+async function approveProfile(id, role, name) {
+  var wasPendingApproval = role === "brother" || role === "admin";
   var res = await sb.from("profiles").update({ role: role }).eq("id", id);
   if (res.error) { showToast("Couldn't update — " + res.error.message, "error"); return; }
+  if (wasPendingApproval) {
+    // Look up the email via a security-definer RPC (admins only) — profiles
+    // itself never stores email addresses, keeping them private by default.
+    var emailRes = await sb.rpc("get_user_email_for_admin", { target_id: id });
+    if (!emailRes.error && emailRes.data) sendApprovalEmail(emailRes.data, name);
+  }
   await fetchProfileLists();
   renderTabContent();
   showToast("Updated", "success");
@@ -1405,8 +1431,8 @@ function renderTeam() {
         pendingList.appendChild(el("div", { class: "approve-row" },
           el("span", { style: { fontSize: "13px" } }, p.name),
           el("div", { style: { display: "flex", gap: "6px" } },
-            el("button", { class: "btn btn-primary btn-sm", onclick: function () { approveProfile(p.id, "brother"); } }, "Approve"),
-            el("button", { class: "btn btn-ghost btn-sm", onclick: function () { approveProfile(p.id, "admin"); } }, "Make Admin")
+            el("button", { class: "btn btn-primary btn-sm", onclick: function () { approveProfile(p.id, "brother", p.name); } }, "Approve"),
+            el("button", { class: "btn btn-ghost btn-sm", onclick: function () { approveProfile(p.id, "admin", p.name); } }, "Make Admin")
           )
         ));
       });
