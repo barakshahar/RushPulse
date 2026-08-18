@@ -45,7 +45,7 @@ a{color:inherit;}
 .brand-sub{font-size:11px;color:var(--dimmer);line-height:1.2;}
 @media(min-width:900px){.brand{margin-bottom:22px;}}
 
-.mobile-nav-toggle{display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex-shrink:0;border-radius:10px;background:rgba(255,255,255,.055);border:1px solid var(--border);color:var(--text);font-size:16px;cursor:pointer;order:1;}
+.mobile-nav-toggle{display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex-shrink:0;border-radius:10px;background:rgba(255,255,255,.055);border:1px solid var(--border);color:var(--text);font-size:16px;cursor:pointer;}
 .mobile-nav-toggle:hover{background:rgba(255,255,255,.09);}
 .tabs{display:none;flex-direction:column;gap:3px;background:rgba(255,255,255,.04);border-radius:12px;padding:6px;order:4;flex:1 1 100%;width:100%;}
 .tabs.open{display:flex;}
@@ -691,10 +691,6 @@ function renderHeader() {
         el("div", { class: "brand-sub" }, "AEPi · Oregon Rush")
       )
     ),
-    el("button", {
-      type: "button", class: "mobile-nav-toggle", title: "Menu",
-      onclick: function () { state.mobileNavOpen = !state.mobileNavOpen; renderHeader(); }
-    }, "☰"),
     el("div", { class: "tabs" + (state.mobileNavOpen ? " open" : "") }, TABS.map(function (t) {
       return el("button", {
         class: "tab-btn" + (state.tab === t.id ? " active" : ""),
@@ -711,11 +707,17 @@ function renderHeader() {
 
   var topbar = document.getElementById("topbar");
   if (topbar) {
-    mount(topbar, el("div", { class: "user-chip" },
-      el("span", {}, state.profile ? state.profile.name : ""),
-      isAdmin ? el("span", { class: "role-pill" }, "Admin") : null,
-      el("button", { class: "btn-xs", onclick: function () { signOut(); } }, "Sign out")
-    ));
+    mount(topbar,
+      el("button", {
+        type: "button", class: "mobile-nav-toggle", title: "Menu", style: { marginRight: "auto" },
+        onclick: function () { state.mobileNavOpen = !state.mobileNavOpen; renderHeader(); }
+      }, "☰"),
+      el("div", { class: "user-chip" },
+        el("span", {}, state.profile ? state.profile.name : ""),
+        isAdmin ? el("span", { class: "role-pill" }, "Admin") : null,
+        el("button", { class: "btn-xs", onclick: function () { signOut(); } }, "Sign out")
+      )
+    );
   }
 }
 
