@@ -524,9 +524,38 @@ async function signIn(email, password) {
   await boot();
 }
 async function signOut() {
+  stopInactivityTracking();
   await sb.auth.signOut();
   state.session = null; state.profile = null; state.data = defaultData();
   await boot();
+}
+
+/* =================================================================
+   Auto sign-out after 30 minutes of no mouse/keyboard/touch activity.
+================================================================= */
+var INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
+var ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
+var inactivityTimer = null;
+var inactivityTrackingActive = false;
+function resetInactivityTimer() {
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(function () {
+    if (state.session) {
+      showToast("Signed out after 30 minutes of inactivity", "info");
+      signOut();
+    }
+  }, INACTIVITY_LIMIT_MS);
+}
+function startInactivityTracking() {
+  if (inactivityTrackingActive) return;
+  inactivityTrackingActive = true;
+  ACTIVITY_EVENTS.forEach(function (evt) { document.addEventListener(evt, resetInactivityTimer); });
+  resetInactivityTimer();
+}
+function stopInactivityTracking() {
+  inactivityTrackingActive = false;
+  ACTIVITY_EVENTS.forEach(function (evt) { document.removeEventListener(evt, resetInactivityTimer); });
+  clearTimeout(inactivityTimer);
 }
 async function approveProfile(id, role, name) {
   var wasPendingApproval = role === "brother" || role === "admin";
@@ -1602,6 +1631,7 @@ async function boot() {
   await fetchProfileLists();
   state.data = await fetchAppData();
   subscribeRealtime();
+  startInactivityTracking();
   showApp();
   renderApp();
 }
