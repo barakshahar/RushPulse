@@ -1038,7 +1038,7 @@ function renderPnmDetailModal(pnm) {
     clearNode(eventsList);
     if (pnm.eventsAttended.length === 0) eventsList.appendChild(el("div", { class: "empty-note" }, "None logged yet"));
     pnm.eventsAttended.forEach(function (ev) {
-      eventsList.appendChild(el("div", { style: { fontSize: "13px" } }, "🗓 " + ev.name + " · " + ev.date));
+      eventsList.appendChild(el("div", { style: { fontSize: "13px" } }, "🗓 " + ev.name));
     });
   }
   refreshEvents();
@@ -1065,7 +1065,7 @@ function renderPnmDetailModal(pnm) {
           if (isSelected) {
             pnm.eventsAttended = pnm.eventsAttended.filter(function (ev) { return ev.name !== opt; });
           } else {
-            pnm.eventsAttended.push({ id: uid(), name: opt, date: today() });
+            pnm.eventsAttended.push({ id: uid(), name: opt });
           }
           editPnm(pnm.id, { eventsAttended: pnm.eventsAttended });
           refreshEventTrigger(); refreshEventPanel(); refreshEvents();
