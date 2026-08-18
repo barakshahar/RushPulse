@@ -270,7 +270,6 @@ var OUTREACH_STATUSES = ["Uncontacted", "Contacted", "Interested"];
 var NOT_INTERESTED = "Not Interested";
 var SCOUTING_COLUMNS = OUTREACH_STATUSES.concat([NOT_INTERESTED]);
 var STAGES = ["Discovered", "Attended Event", "Interview", "Invite Only", "Bid Extended", "Bid Accepted", "Dropped"];
-var ADVANCED_STAGES = ["Interview", "Bid Extended", "Bid Accepted"];
 var PULSE_ICON = '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><path d="M5 22h6l3-12 5 22 4-16 2.5 6h11.5" fill="none" stroke="white" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /* =================================================================
@@ -444,7 +443,6 @@ var state = {
   quickLogOpen: false,
   quickLogMode: "existing",
   pnmDetailId: null,
-  showAllStages: false,
   selectedPnmId: null,
   toastTimer: null
 };
@@ -1114,6 +1112,16 @@ function buildKanbanCard(pnm) {
       }
     }
   }, "🗑");
+  var moveSel = el("select", {
+    class: "input", title: "Move to stage",
+    style: { marginTop: "8px", fontSize: "11.5px", padding: "4px 6px" },
+    onclick: function (e) { e.stopPropagation(); },
+    onchange: async function (e) {
+      e.stopPropagation();
+      await movePnmStage(pnm.id, e.target.value);
+      renderTabContent();
+    }
+  }, STAGES.map(function (s) { return el("option", { value: s, selected: pnm.stage === s }, s); }));
   var card = el("div", { class: "k-card", draggable: true },
     deleteBtn,
     el("div", { class: "k-card-top" },
@@ -1127,7 +1135,8 @@ function buildKanbanCard(pnm) {
       votesArr.length > 0 ? badge(votesArr.length + " vote" + (votesArr.length > 1 ? "s" : ""), "green") : null,
       badge("J: " + (pnm.jewish || "TBD"), statusBadgeTone(pnm.jewish || "TBD")),
       badge("L: " + (pnm.legacy || "TBD"), statusBadgeTone(pnm.legacy || "TBD"))
-    )
+    ),
+    moveSel
   );
   card.addEventListener("click", function () { renderPnmDetailModal(pnm); });
   card.addEventListener("dragstart", function (e) {
@@ -1195,20 +1204,16 @@ function buildVoteBar(pnm) {
 
 function renderDeliberations() {
   var voterName = state.profile ? state.profile.name : "";
-  var eligible = state.data.pnms.filter(function (p) {
-    return state.showAllStages ? p.stage !== "Dropped" : ADVANCED_STAGES.indexOf(p.stage) !== -1;
-  });
+  // Every PNM shows up here the moment they're promoted from Scouting —
+  // only "Dropped" PNMs are hidden, since there's no reason to vote on them.
+  var eligible = state.data.pnms.filter(function (p) { return p.stage !== "Dropped"; });
   if (!state.selectedPnmId || !eligible.some(function (p) { return p.id === state.selectedPnmId; })) {
     state.selectedPnmId = eligible.length ? eligible[0].id : null;
   }
 
   var wrap = el("div", {});
   var headerRow = el("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" } },
-    el("h2", { class: "grad-heading", style: { margin: 0, fontSize: "16px" } }, "Chapter Deliberations"),
-    el("label", { class: "showall-label" },
-      el("input", { type: "checkbox", checked: state.showAllStages, onchange: function (e) { state.showAllStages = e.target.checked; renderTabContent(); } }),
-      "Show all active stages"
-    )
+    el("h2", { class: "grad-heading", style: { margin: 0, fontSize: "16px" } }, "Chapter Deliberations")
   );
   wrap.appendChild(headerRow);
 
@@ -1485,6 +1490,3 @@ boot();
 </script>
 </body>
 </html>
-
-
-
