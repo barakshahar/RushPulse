@@ -74,6 +74,8 @@ a{color:inherit;}
 .btn-sm{padding:5px 10px;font-size:12px;}
 .btn-xs{padding:2px 4px;font-size:11px;background:none;border:none;color:var(--dimmer);cursor:pointer;}
 .btn-xs:hover{color:var(--text);}
+.p-trash{font-size:13px;}
+.p-trash:hover{color:#ff6b81;}
 .input,select,textarea{width:100%;background:rgba(255,255,255,.045);border:1px solid var(--border);border-radius:9px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;transition:.15s;}
 .input:focus,select:focus,textarea:focus{border-color:var(--indigo2);box-shadow:0 0 0 3px rgba(139,127,255,.25);}
 textarea{resize:vertical;min-height:44px;}
@@ -86,6 +88,7 @@ textarea{resize:vertical;min-height:44px;}
 .badge-green{background:rgba(16,185,129,.18);color:#7cf2c4;}
 .badge-amber{background:rgba(245,158,11,.18);color:#ffd27a;}
 .badge-red{background:rgba(244,66,106,.18);color:#ff9db4;}
+.badge-pink{background:rgba(236,72,153,.18);color:#ffa5d6;}
 
 #main-wrap{flex:1;min-width:0;padding-bottom:40px;}
 #topbar{position:sticky;top:0;z-index:35;display:flex;justify-content:flex-end;padding:12px 20px 0;}
@@ -579,7 +582,7 @@ async function addProspect(fields) {
   var p = {
     id: uid(), name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "",
     major: "", classYear: "", vouchedBy: "", outreachStatus: "Uncontacted", notes: "",
-    jewish: "TBD", legacy: "TBD", connections: "",
+    jewish: "TBD", legacy: "TBD", connections: "", rushCrush: "",
     createdAt: today(), promotedToPnm: null
   };
   for (var k in fields) p[k] = fields[k];
@@ -605,7 +608,7 @@ async function promoteToPNM(prospectId) {
   var pnm = {
     id: uid(), name: p.name, phone: p.phone, email: p.email, instagram: p.instagram,
     hometown: p.hometown, highSchool: p.highSchool, major: p.major, classYear: p.classYear,
-    vouchedBy: p.vouchedBy, jewish: p.jewish || "TBD", legacy: p.legacy || "TBD", connections: p.connections || "", vibeRating: 0, stage: "Discovered",
+    vouchedBy: p.vouchedBy, jewish: p.jewish || "TBD", legacy: p.legacy || "TBD", connections: p.connections || "", rushCrush: p.rushCrush || "", vibeRating: 0, stage: "Discovered",
     eventsAttended: [], notes: p.notes ? [{ id: uid(), author: p.vouchedBy || "Scouting", text: p.notes, date: today() }] : [],
     votes: {}, promotedFromProspectId: p.id, createdAt: p.createdAt, promotedAt: today()
   };
@@ -621,7 +624,7 @@ async function promoteToPNM(prospectId) {
 async function addPnmQuick(fields) {
   var pnm = {
     id: uid(), name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "",
-    major: "", classYear: "", vouchedBy: "", jewish: "TBD", legacy: "TBD", connections: "", vibeRating: 0, stage: "Discovered",
+    major: "", classYear: "", vouchedBy: "", jewish: "TBD", legacy: "TBD", connections: "", rushCrush: "", vibeRating: 0, stage: "Discovered",
     eventsAttended: [], notes: [], votes: {}, promotedFromProspectId: null, createdAt: today()
   };
   for (var k in fields) pnm[k] = fields[k];
@@ -786,6 +789,27 @@ function field(label, node) {
 function brotherDatalist(idAttr) {
   return el("datalist", { id: idAttr }, state.approvedProfiles.map(function (b) { return el("option", { value: b.name }); }));
 }
+// Rush Crush: any signed-in brother can claim (or reassign) a PNM/prospect
+// as their "rush crush" — one claimant at a time, chosen from the live
+// roster of approved brothers so it's always accurate and can't be
+// misspelled. Editable anytime, not just at creation.
+function buildRushCrushSelect(person, kind) {
+  var sel = el("select", {
+    class: "input",
+    onchange: function (e) {
+      var val = e.target.value;
+      person.rushCrush = val;
+      if (kind === "pnm") editPnm(person.id, { rushCrush: val });
+      else editProspect(person.id, { rushCrush: val });
+    }
+  },
+    el("option", { value: "", selected: !person.rushCrush }, "No one yet"),
+    state.approvedProfiles.map(function (b) {
+      return el("option", { value: b.name, selected: person.rushCrush === b.name }, b.name);
+    })
+  );
+  return sel;
+}
 
 function openProspectModal(prospect) {
   state.prospectModal = prospect ? { mode: "edit", prospect: prospect } : { mode: "add", prospect: null };
@@ -793,7 +817,7 @@ function openProspectModal(prospect) {
 }
 function renderProspectModal() {
   var editing = state.prospectModal.prospect;
-  var f = editing || { name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "", major: "", classYear: "", vouchedBy: "", outreachStatus: "Uncontacted", notes: "", jewish: "TBD", legacy: "TBD", connections: "" };
+  var f = editing || { name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "", major: "", classYear: "", vouchedBy: "", outreachStatus: "Uncontacted", notes: "", jewish: "TBD", legacy: "TBD", connections: "", rushCrush: "" };
 
   var nameI = el("input", { class: "input", required: true, value: f.name, placeholder: "Full name" });
   var igI = el("input", { class: "input", value: f.instagram, placeholder: "@handle" });
@@ -811,6 +835,10 @@ function renderProspectModal() {
   var legacyI = yesNoTbdSelect(f.legacy);
   var connectionsI = el("input", { class: "input", value: f.connections, placeholder: "Brother they know from childhood (optional)", list: "brothers-dl-1" });
   var notesI = el("textarea", { class: "input", rows: 2, placeholder: "How you know them, vibe…" }, f.notes);
+  var crushSel = el("select", { class: "input" },
+    el("option", { value: "", selected: !f.rushCrush }, "No one yet"),
+    state.approvedProfiles.map(function (b) { return el("option", { value: b.name, selected: f.rushCrush === b.name }, b.name); })
+  );
 
   var form = el("form", { class: "form-grid" },
     field("Name *", nameI), field("Instagram", igFieldWithLink(igI)),
@@ -818,7 +846,8 @@ function renderProspectModal() {
     field("Hometown", hometownI), field("High School", schoolI),
     field("Major", majorI), field("Class Year", yearI),
     field("Vouched By", vouchI), field("Outreach Status", statusI),
-    field("Jewish", jewishI), field("Legacy", legacyI)
+    field("Jewish", jewishI), field("Legacy", legacyI),
+    field("Rush Crush 💘", crushSel)
   );
 
   var body = el("div", {},
@@ -835,7 +864,7 @@ function renderProspectModal() {
             name: nameI.value.trim(), instagram: igI.value.trim(), phone: phoneI.value.trim(), email: emailI.value.trim(),
             hometown: hometownI.value.trim(), highSchool: schoolI.value.trim(), major: majorI.value.trim(),
             classYear: yearI.value.trim(), vouchedBy: vouchI.value.trim(), outreachStatus: statusI.value, notes: notesI.value,
-            jewish: jewishI.value, legacy: legacyI.value, connections: connectionsI.value.trim()
+            jewish: jewishI.value, legacy: legacyI.value, connections: connectionsI.value.trim(), rushCrush: crushSel.value
           };
           var ok = true;
           if (editing) await editProspect(editing.id, fields);
@@ -893,9 +922,7 @@ function buildProspectCard(p) {
     p.phone ? el("div", { class: "row" }, "📞 " + p.phone) : null,
     p.email ? el("div", { class: "row" }, "✉️ " + p.email) : null,
     p.classYear ? el("div", { class: "row" }, "🎓 Class of " + p.classYear) : null,
-    el("div", { style: { display: "flex", gap: "10px", marginTop: "4px" } },
-      el("button", { class: "btn-xs", style: { textDecoration: "underline", color: "#fca5a5" }, onclick: async function (e) { e.stopPropagation(); await deleteProspect(p.id); renderTabContent(); } }, "Delete")
-    )
+    field("Rush Crush 💘", buildRushCrushSelect(p, "prospect"))
   );
   var toggleBtn = el("button", { class: "btn-xs", style: { fontSize: "13px" } }, "▾");
   toggleBtn.addEventListener("click", function (e) {
@@ -904,13 +931,24 @@ function buildProspectCard(p) {
     details.classList.toggle("hidden");
     toggleBtn.textContent = isHidden ? "▲" : "▾";
   });
+  var trashBtn = el("button", {
+    class: "btn-xs p-trash", title: "Remove from Scouting",
+    onclick: async function (e) {
+      e.stopPropagation();
+      if (!window.confirm("Remove " + (p.name || "this prospect") + " from Scouting? This can't be undone.")) return;
+      await deleteProspect(p.id);
+      renderTabContent();
+      showToast("Removed " + (p.name || "prospect"), "success");
+    }
+  }, "🗑");
 
   var badges = el("div", { class: "p-badges" },
     p.hometown ? badge(p.hometown) : null,
     p.highSchool ? badge(p.highSchool) : null,
     p.major ? badge(p.major, "indigo") : null,
     badge("Jewish: " + (p.jewish || "TBD"), statusBadgeTone(p.jewish || "TBD")),
-    badge("Legacy: " + (p.legacy || "TBD"), statusBadgeTone(p.legacy || "TBD"))
+    badge("Legacy: " + (p.legacy || "TBD"), statusBadgeTone(p.legacy || "TBD")),
+    p.rushCrush ? badge("💘 " + p.rushCrush, "pink") : null
   );
 
   var isNotInterested = p.outreachStatus === NOT_INTERESTED;
@@ -946,7 +984,7 @@ function buildProspectCard(p) {
           igLink(p.instagram)
         )
       ),
-      toggleBtn
+      el("div", { style: { display: "flex", gap: "2px" } }, trashBtn, toggleBtn)
     ),
     badges,
     p.vouchedBy ? el("div", { class: "p-vouch" }, "Vouched by ", el("span", {}, p.vouchedBy)) : null,
@@ -1202,7 +1240,7 @@ function renderPnmDetailModal(pnm) {
       field("Major", majorI), field("Class Year", yearI),
       field("Vouched By", vouchI), field("Stage", stageSel),
       field("Jewish", jewishI), field("Legacy", legacyI),
-      field("Connections", connectionsI)
+      field("Connections", connectionsI), field("Rush Crush 💘", buildRushCrushSelect(pnm, "pnm"))
     ),
     brotherDatalist("brothers-dl-3"),
     el("div", { style: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" } },
