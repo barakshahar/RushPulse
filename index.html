@@ -89,6 +89,10 @@ textarea{resize:vertical;min-height:44px;}
 .badge-amber{background:rgba(245,158,11,.18);color:#ffd27a;}
 .badge-red{background:rgba(244,66,106,.18);color:#ff9db4;}
 .badge-pink{background:rgba(236,72,153,.18);color:#ffa5d6;}
+.dup-warning{font-size:12px;color:#ffd27a;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:7px 10px;margin:-6px 0 12px;}
+.decision-banner{font-size:13px;border-radius:10px;padding:9px 12px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+.decision-banner.bid{background:rgba(16,185,129,.14);color:#7cf2c4;border:1px solid rgba(16,185,129,.3);}
+.decision-banner.nobid{background:rgba(244,66,106,.14);color:#ff9db4;border:1px solid rgba(244,66,106,.3);}
 
 #main-wrap{flex:1;min-width:0;padding-bottom:40px;}
 #topbar{position:sticky;top:0;z-index:35;display:flex;justify-content:flex-end;padding:12px 20px 0;}
@@ -121,6 +125,7 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 .col-attended-event{border-left-color:var(--cyan);}
 .col-interview{border-left-color:var(--violet);}
 .col-invite-only{border-left-color:var(--indigo2);}
+.col-potential-lock{border-left-color:#c084fc;}
 .col-bid-extended{border-left-color:var(--amber);}
 .col-bid-accepted{border-left-color:var(--green);}
 .col-dropped{border-left-color:var(--red);}
@@ -287,7 +292,7 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 var OUTREACH_STATUSES = ["Uncontacted", "Contacted", "Interested"];
 var NOT_INTERESTED = "Not Interested";
 var SCOUTING_COLUMNS = OUTREACH_STATUSES.concat([NOT_INTERESTED]);
-var STAGES = ["Discovered", "Attended Event", "Interview", "Invite Only", "Bid Extended", "Bid Accepted", "Dropped"];
+var STAGES = ["Discovered", "Attended Event", "Interview", "Invite Only", "Potential Lock", "Bid Extended", "Bid Accepted", "Dropped"];
 var EVENT_OPTIONS = ["Event 1", "Event 2", "Event 3", "Invite Only"];
 var PULSE_ICON = '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><path d="M5 22h6l3-12 5 22 4-16 2.5 6h11.5" fill="none" stroke="white" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -491,6 +496,7 @@ var state = {
   tab: "scouting",
   mobileNavOpen: false,    // hamburger menu open state (mobile widths only)
   scoutingSearch: "", scoutingHometown: "", scoutingSchool: "", scoutingMajor: "", scoutingJewish: "",
+  trackerSearch: "", trackerHometown: "", trackerSchool: "", trackerMajor: "", trackerJewish: "",
   prospectModal: null,      // { mode:'add'|'edit', prospect }
   quickLogOpen: false,
   quickLogMode: "existing",
@@ -574,6 +580,18 @@ async function approveProfile(id, role, name) {
   renderTabContent();
   showToast("Updated", "success");
 }
+// Fully removes a profile row — used to decline a pending join request or to
+// kick an active brother off the roster outright. Their Supabase login
+// itself isn't deleted (that needs a service-role key we don't put in the
+// client), but with no profile row they fail the "approved" check the
+// instant they load the app, so this is a real, immediate lockout.
+async function deleteProfile(id) {
+  var res = await sb.from("profiles").delete().eq("id", id);
+  if (res.error) { showToast("Couldn't remove — " + res.error.message, "error"); return; }
+  await fetchProfileLists();
+  renderTabContent();
+  showToast("Removed", "success");
+}
 
 /* =================================================================
    Business logic (framework-agnostic, mutates state.data)
@@ -610,7 +628,7 @@ async function promoteToPNM(prospectId) {
     hometown: p.hometown, highSchool: p.highSchool, major: p.major, classYear: p.classYear,
     vouchedBy: p.vouchedBy, jewish: p.jewish || "TBD", legacy: p.legacy || "TBD", connections: p.connections || "", rushCrush: p.rushCrush || "", vibeRating: 0, stage: "Discovered",
     eventsAttended: [], notes: p.notes ? [{ id: uid(), author: p.vouchedBy || "Scouting", text: p.notes, date: today() }] : [],
-    votes: {}, promotedFromProspectId: p.id, createdAt: p.createdAt, promotedAt: today()
+    votes: {}, decision: null, decisionAt: null, decisionBy: null, promotedFromProspectId: p.id, createdAt: p.createdAt, promotedAt: today()
   };
   fresh.pnms.unshift(pnm);
   p.promotedToPnm = pnm.id;
@@ -621,11 +639,43 @@ async function promoteToPNM(prospectId) {
   showToast(pnm.name + " promoted to active rush!", "success");
 }
 
+// Reverses promoteToPNM: sends a PNM back to Scouting. If the PNM still has
+// a linked prospect record it updates that record with whatever's changed
+// since promotion; otherwise (quick-added PNM, or the original prospect was
+// deleted) it creates a fresh prospect from the PNM's current details.
+// Either way the PNM record itself is removed.
+async function demoteToScouting(pnmId) {
+  var fresh = await fetchAppData();
+  var pnm = fresh.pnms.find(function (x) { return x.id === pnmId; });
+  if (!pnm) return false;
+  var carried = {
+    name: pnm.name, phone: pnm.phone, email: pnm.email, instagram: pnm.instagram,
+    hometown: pnm.hometown, highSchool: pnm.highSchool, major: pnm.major, classYear: pnm.classYear,
+    vouchedBy: pnm.vouchedBy, jewish: pnm.jewish || "TBD", legacy: pnm.legacy || "TBD",
+    connections: pnm.connections || "", rushCrush: pnm.rushCrush || ""
+  };
+  var prospect = pnm.promotedFromProspectId ? fresh.prospects.find(function (x) { return x.id === pnm.promotedFromProspectId; }) : null;
+  if (prospect) {
+    for (var k in carried) prospect[k] = carried[k];
+    prospect.promotedToPnm = null;
+  } else {
+    carried.id = uid();
+    carried.outreachStatus = "Uncontacted";
+    carried.notes = "";
+    carried.createdAt = today();
+    carried.promotedToPnm = null;
+    fresh.prospects.unshift(carried);
+  }
+  fresh.pnms = fresh.pnms.filter(function (x) { return x.id !== pnmId; });
+  await saveAppData(fresh);
+  state.data = fresh;
+  return true;
+}
 async function addPnmQuick(fields) {
   var pnm = {
     id: uid(), name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "",
     major: "", classYear: "", vouchedBy: "", jewish: "TBD", legacy: "TBD", connections: "", rushCrush: "", vibeRating: 0, stage: "Discovered",
-    eventsAttended: [], notes: [], votes: {}, promotedFromProspectId: null, createdAt: today()
+    eventsAttended: [], notes: [], votes: {}, decision: null, decisionAt: null, decisionBy: null, promotedFromProspectId: null, createdAt: today()
   };
   for (var k in fields) pnm[k] = fields[k];
   await withData(function (d) { d.pnms.unshift(pnm); });
@@ -645,6 +695,17 @@ async function deletePnm(id) {
   await withData(function (d) { d.pnms = d.pnms.filter(function (p) { return p.id !== id; }); });
 }
 async function movePnmStage(id, stage) { await editPnm(id, { stage: stage }); }
+// Finalizes a chapter's decision on a PNM from Deliberations — separate
+// from freely dragging the Kanban card. Extending a bid moves the PNM to
+// "Bid Extended"; deciding No Bid moves them to "Dropped". Both are
+// timestamped and attributed so there's a clear record of who decided and
+// when. Passing null clears the decision (admin-only "Reopen").
+async function setPnmDecision(id, decision) {
+  var patch = decision
+    ? { decision: decision, decisionAt: today(), decisionBy: state.profile ? state.profile.name : "Unknown", stage: decision === "bid" ? "Bid Extended" : "Dropped" }
+    : { decision: null, decisionAt: null, decisionBy: null };
+  return await editPnm(id, patch);
+}
 // Note/event objects are built by the caller (so the id used for the
 // optimistic local UI update matches the id actually saved to Supabase).
 async function addNote(id, note) {
@@ -811,6 +872,29 @@ function buildRushCrushSelect(person, kind) {
   return sel;
 }
 
+// Duplicate detection: warns (never blocks) when a name or Instagram handle
+// closely matches someone already tracked, so two brothers don't
+// accidentally create the same person twice. Checks both prospects and
+// promoted PNMs, since a person could be under either list.
+function findPossibleDuplicate(name, instagram, excludeId) {
+  var normName = (name || "").trim().toLowerCase();
+  var normIg = normalizeIG(instagram);
+  if (!normName && !normIg) return null;
+  var all = state.data.prospects.concat(state.data.pnms);
+  for (var i = 0; i < all.length; i++) {
+    var p = all[i];
+    if (excludeId && p.id === excludeId) continue;
+    var pName = (p.name || "").trim().toLowerCase();
+    var pIg = normalizeIG(p.instagram);
+    if ((normName && pName === normName) || (normIg && pIg && pIg === normIg)) return p;
+  }
+  return null;
+}
+function duplicateWarningText(match) {
+  var isPnm = state.data.pnms.indexOf(match) !== -1;
+  return "⚠️ Possible duplicate — matches " + (isPnm ? "PNM" : "Prospect") + " \"" + match.name + "\". Double check before adding.";
+}
+
 function openProspectModal(prospect) {
   state.prospectModal = prospect ? { mode: "edit", prospect: prospect } : { mode: "add", prospect: null };
   renderProspectModal();
@@ -839,6 +923,15 @@ function renderProspectModal() {
     el("option", { value: "", selected: !f.rushCrush }, "No one yet"),
     state.approvedProfiles.map(function (b) { return el("option", { value: b.name, selected: f.rushCrush === b.name }, b.name); })
   );
+  var dupWarning = el("div", { class: "dup-warning hidden" });
+  function checkDuplicate() {
+    var match = findPossibleDuplicate(nameI.value, igI.value, editing ? editing.id : null);
+    if (match) { dupWarning.textContent = duplicateWarningText(match); dupWarning.classList.remove("hidden"); }
+    else dupWarning.classList.add("hidden");
+  }
+  nameI.addEventListener("input", checkDuplicate);
+  igI.addEventListener("input", checkDuplicate);
+  checkDuplicate();
 
   var form = el("form", { class: "form-grid" },
     field("Name *", nameI), field("Instagram", igFieldWithLink(igI)),
@@ -852,6 +945,7 @@ function renderProspectModal() {
 
   var body = el("div", {},
     form,
+    dupWarning,
     field("Connections (optional)", connectionsI),
     field("Notes", notesI),
     brotherDatalist("brothers-dl-1"),
@@ -886,6 +980,14 @@ function renderQuickAddModal() {
   var jewishI = yesNoTbdSelect("TBD");
   var legacyI = yesNoTbdSelect("TBD");
   var connectionsI = el("input", { class: "input", placeholder: "Brother they know from childhood (optional)", list: "brothers-dl-qa" });
+  var dupWarning = el("div", { class: "dup-warning hidden" });
+  function checkDuplicate() {
+    var match = findPossibleDuplicate(nameI.value, igI.value, null);
+    if (match) { dupWarning.textContent = duplicateWarningText(match); dupWarning.classList.remove("hidden"); }
+    else dupWarning.classList.add("hidden");
+  }
+  nameI.addEventListener("input", checkDuplicate);
+  igI.addEventListener("input", checkDuplicate);
 
   async function submit() {
     if (!nameI.value.trim()) { nameI.focus(); return; }
@@ -906,6 +1008,7 @@ function renderQuickAddModal() {
     field("Jewish", jewishI),
     field("Legacy", legacyI),
     field("Connections (optional)", connectionsI),
+    dupWarning,
     brotherDatalist("brothers-dl-qa"),
     el("button", {
       class: "btn btn-primary", style: { width: "100%", padding: "11px", fontSize: "14.5px" }, type: "button",
@@ -1243,6 +1346,17 @@ function renderPnmDetailModal(pnm) {
       field("Connections", connectionsI), field("Rush Crush 💘", buildRushCrushSelect(pnm, "pnm"))
     ),
     brotherDatalist("brothers-dl-3"),
+    pnm.decision ? el("div", { class: "decision-banner " + (pnm.decision === "bid" ? "bid" : "nobid") },
+      el("span", {}, pnm.decision === "bid" ? "✅ Bid Extended" : "❌ No Bid"),
+      el("span", {}, "— decided by " + (pnm.decisionBy || "Unknown") + " on " + pnm.decisionAt),
+      (state.profile && state.profile.role === "admin") ? el("button", {
+        class: "btn-xs", type: "button", onclick: async function () {
+          await setPnmDecision(pnm.id, null);
+          pnm.decision = null; pnm.decisionAt = null; pnm.decisionBy = null;
+          closeModal(); renderTabContent();
+        }
+      }, "Reopen (admin)") : null
+    ) : null,
     el("div", { style: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" } },
       el("span", { class: "field-label", style: { marginBottom: 0 } }, "Vibe Rating"), starsContainer
     ),
@@ -1257,7 +1371,19 @@ function renderPnmDetailModal(pnm) {
       el("div", { class: "inline-add" }, noteI, addNoteBtn)
     ),
     el("div", { class: "modal-footer between section-divider" },
-      el("button", { class: "btn btn-danger", type: "button", onclick: async function () { await deletePnm(pnm.id); closeModal(); renderTabContent(); } }, "Delete PNM"),
+      el("div", { style: { display: "flex", gap: "8px" } },
+        el("button", { class: "btn btn-danger", type: "button", onclick: async function () { await deletePnm(pnm.id); closeModal(); renderTabContent(); } }, "Delete PNM"),
+        el("button", {
+          class: "btn btn-ghost", type: "button", title: "Send back to Scouting for more outreach",
+          onclick: async function () {
+            if (!window.confirm("Move " + (pnm.name || "this PNM") + " back to Scouting? They'll be removed from Rush Tracker and Deliberations.")) return;
+            await demoteToScouting(pnm.id);
+            closeModal();
+            renderTabContent();
+            showToast(pnm.name + " moved back to Scouting", "success");
+          }
+        }, "↩ Back to Scouting")
+      ),
       el("button", { class: "btn btn-primary", type: "button", onclick: function () { closeModal(); renderTabContent(); } }, "Done")
     )
   );
@@ -1298,7 +1424,8 @@ function buildKanbanCard(pnm) {
       pnm.eventsAttended.length > 0 ? badge(pnm.eventsAttended.length + " event" + (pnm.eventsAttended.length > 1 ? "s" : "")) : null,
       votesArr.length > 0 ? badge(votesArr.length + " vote" + (votesArr.length > 1 ? "s" : ""), "green") : null,
       badge("J: " + (pnm.jewish || "TBD"), statusBadgeTone(pnm.jewish || "TBD")),
-      badge("L: " + (pnm.legacy || "TBD"), statusBadgeTone(pnm.legacy || "TBD"))
+      badge("L: " + (pnm.legacy || "TBD"), statusBadgeTone(pnm.legacy || "TBD")),
+      pnm.rushCrush ? badge("💘 " + pnm.rushCrush, "pink") : null
     ),
     moveSel
   );
@@ -1316,9 +1443,57 @@ function renderTracker() {
   var wrap = el("div", {});
   wrap.appendChild(el("button", { class: "quick-log-btn", onclick: renderQuickLogModal }, "⚡ 10-Second Quick Log"));
 
-  var kanban = el("div", { class: "kanban-wrap" });
+  var hometownSel = el("select", { class: "input", onchange: function (e) { state.trackerHometown = e.target.value; refreshTrackerColumns(); } });
+  var schoolSel = el("select", { class: "input", onchange: function (e) { state.trackerSchool = e.target.value; refreshTrackerColumns(); } });
+  var majorSel = el("select", { class: "input", onchange: function (e) { state.trackerMajor = e.target.value; refreshTrackerColumns(); } });
+  var jewishSel = el("select", { class: "input", onchange: function (e) { state.trackerJewish = e.target.value; refreshTrackerColumns(); } },
+    el("option", { value: "" }, "Jewish: All"),
+    el("option", { value: "Yes", selected: state.trackerJewish === "Yes" }, "Jewish: Yes"),
+    el("option", { value: "No", selected: state.trackerJewish === "No" }, "Jewish: No"),
+    el("option", { value: "TBD", selected: state.trackerJewish === "TBD" }, "Jewish: TBD")
+  );
+  var searchI = el("input", { class: "input", placeholder: "Search name or @instagram…", value: state.trackerSearch, oninput: function (e) { state.trackerSearch = e.target.value; refreshTrackerColumns(); } });
+  var filterBar = el("div", { class: "filter-bar" }, searchI, hometownSel, schoolSel, majorSel, jewishSel);
+  wrap.appendChild(filterBar);
+
+  var kanban = el("div", { class: "kanban-wrap", id: "tracker-columns" });
+  wrap.appendChild(kanban);
+
+  fillTrackerFilterOptions(hometownSel, schoolSel, majorSel);
+  fillTrackerColumns(kanban);
+  return wrap;
+}
+function fillTrackerFilterOptions(hometownSel, schoolSel, majorSel) {
+  var all = state.data.pnms;
+  function uniq(arr) {
+    var seen = {}; var out = [];
+    arr.forEach(function (v) { if (v && !seen[v]) { seen[v] = true; out.push(v); } });
+    return out.sort();
+  }
+  var hometowns = uniq(all.map(function (p) { return p.hometown; }));
+  var schools = uniq(all.map(function (p) { return p.highSchool; }));
+  var majors = uniq(all.map(function (p) { return p.major; }));
+  mount(hometownSel, el("option", { value: "" }, "All hometowns"), hometowns.map(function (h) { return el("option", { value: h, selected: state.trackerHometown === h }, h); }));
+  mount(schoolSel, el("option", { value: "" }, "All high schools"), schools.map(function (h) { return el("option", { value: h, selected: state.trackerSchool === h }, h); }));
+  mount(majorSel, el("option", { value: "" }, "All majors"), majors.map(function (h) { return el("option", { value: h, selected: state.trackerMajor === h }, h); }));
+}
+function refreshTrackerColumns() {
+  var container = document.getElementById("tracker-columns");
+  if (container) fillTrackerColumns(container);
+}
+function fillTrackerColumns(container) {
+  clearNode(container);
+  var search = state.trackerSearch.toLowerCase();
+  var filtered = state.data.pnms.filter(function (p) {
+    var matchesSearch = !search || p.name.toLowerCase().indexOf(search) !== -1 || normalizeIG(p.instagram).indexOf(search) !== -1;
+    return matchesSearch &&
+      (!state.trackerHometown || p.hometown === state.trackerHometown) &&
+      (!state.trackerSchool || p.highSchool === state.trackerSchool) &&
+      (!state.trackerMajor || p.major === state.trackerMajor) &&
+      (!state.trackerJewish || (p.jewish || "TBD") === state.trackerJewish);
+  });
   STAGES.forEach(function (stage) {
-    var list = state.data.pnms.filter(function (p) { return p.stage === stage; });
+    var list = filtered.filter(function (p) { return p.stage === stage; });
     var col = el("div", { class: "kanban-col col-" + slug(stage) },
       el("div", { class: "column-header" },
         el("div", { class: "column-title" }, stage),
@@ -1333,12 +1508,10 @@ function renderTracker() {
       col.classList.remove("drop-hover");
       var id = e.dataTransfer.getData("text/plain") || draggedPnmId;
       if (id) await movePnmStage(id, stage);
-      renderTabContent();
+      refreshTrackerColumns();
     });
-    kanban.appendChild(col);
+    container.appendChild(col);
   });
-  wrap.appendChild(kanban);
-  return wrap;
 }
 
 /* =================================================================
@@ -1371,6 +1544,7 @@ function buildVoteBar(pnm) {
 
 function renderDeliberations() {
   var voterName = state.profile ? state.profile.name : "";
+  var isAdmin = state.profile && state.profile.role === "admin";
   // Every PNM shows up here the moment they're promoted from Scouting —
   // only "Dropped" PNMs are hidden, since there's no reason to vote on them.
   var eligible = state.data.pnms.filter(function (p) { return p.stage !== "Dropped"; });
@@ -1437,21 +1611,24 @@ function renderDeliberations() {
 
     var voteBarWrap = el("div", {});
     voteBarWrap.appendChild(buildVoteBar(selected));
-    var yesBtn = el("button", { class: "vote-btn yes" + (selected.votes[voterName] === "yes" ? " active" : "") }, "Yes");
-    var discussBtn = el("button", { class: "vote-btn discuss" + (selected.votes[voterName] === "discuss" ? " active" : "") }, "Discuss");
-    var noBtn = el("button", { class: "vote-btn no" + (selected.votes[voterName] === "no" ? " active" : "") }, "No");
-    var abstainBtn = el("button", { class: "vote-btn abstain" + (selected.votes[voterName] === "abstain" ? " active" : "") }, "Abstain");
+    var locked = !!selected.decision;
+    var yesBtn = el("button", { class: "vote-btn yes" + (selected.votes[voterName] === "yes" ? " active" : ""), disabled: locked }, "Yes");
+    var discussBtn = el("button", { class: "vote-btn discuss" + (selected.votes[voterName] === "discuss" ? " active" : ""), disabled: locked }, "Discuss");
+    var noBtn = el("button", { class: "vote-btn no" + (selected.votes[voterName] === "no" ? " active" : ""), disabled: locked }, "No");
+    var abstainBtn = el("button", { class: "vote-btn abstain" + (selected.votes[voterName] === "abstain" ? " active" : ""), disabled: locked }, "Abstain");
     var clearVoteBtn = el("button", { class: "btn-xs", style: { marginLeft: "auto" } }, "Clear my vote");
     function refreshVoteRow() {
       yesBtn.className = "vote-btn yes" + (selected.votes[voterName] === "yes" ? " active" : "");
       discussBtn.className = "vote-btn discuss" + (selected.votes[voterName] === "discuss" ? " active" : "");
       noBtn.className = "vote-btn no" + (selected.votes[voterName] === "no" ? " active" : "");
       abstainBtn.className = "vote-btn abstain" + (selected.votes[voterName] === "abstain" ? " active" : "");
-      clearVoteBtn.style.display = selected.votes[voterName] ? "" : "none";
+      clearVoteBtn.style.display = selected.votes[voterName] && !selected.decision ? "" : "none";
       clearNode(voteBarWrap); voteBarWrap.appendChild(buildVoteBar(selected));
     }
     // Clicking your current vote again removes it; picking a different one switches to it.
+    // Locked once a final decision is on record — see the decision banner below.
     function vote(choice) {
+      if (selected.decision) return;
       var next = selected.votes[voterName] === choice ? null : choice;
       if (next) selected.votes[voterName] = next; else delete selected.votes[voterName];
       castVote(selected.id, voterName, next);
@@ -1462,12 +1639,51 @@ function renderDeliberations() {
     noBtn.addEventListener("click", function () { vote("no"); });
     abstainBtn.addEventListener("click", function () { vote("abstain"); });
     clearVoteBtn.addEventListener("click", function () {
+      if (selected.decision) return;
       delete selected.votes[voterName];
       castVote(selected.id, voterName, null);
       refreshVoteRow(); refreshListMeta();
     });
     refreshVoteRow();
     function refreshListMeta() { renderTabContent(); }
+
+    // Final decision — extends/denies a bid from right here in Deliberations,
+    // separate from dragging the Kanban card. Once decided, voting locks.
+    var decisionWrap = el("div", {});
+    function refreshDecision() {
+      clearNode(decisionWrap);
+      if (selected.decision) {
+        decisionWrap.appendChild(el("div", { class: "decision-banner " + (selected.decision === "bid" ? "bid" : "nobid") },
+          el("span", {}, selected.decision === "bid" ? "✅ Bid Extended" : "❌ No Bid"),
+          el("span", {}, "— decided by " + (selected.decisionBy || "Unknown") + " on " + selected.decisionAt),
+          isAdmin ? el("button", {
+            class: "btn-xs", onclick: async function () {
+              await setPnmDecision(selected.id, null);
+              selected.decision = null; selected.decisionAt = null; selected.decisionBy = null;
+              renderTabContent();
+            }
+          }, "Reopen (admin)") : null
+        ));
+      } else {
+        decisionWrap.appendChild(el("div", { class: "vote-row" },
+          el("button", {
+            class: "btn btn-primary btn-sm", type: "button", onclick: async function () {
+              var updated = await setPnmDecision(selected.id, "bid");
+              if (updated) { selected.decision = updated.decision; selected.decisionAt = updated.decisionAt; selected.decisionBy = updated.decisionBy; selected.stage = updated.stage; }
+              renderTabContent();
+            }
+          }, "Extend Bid ✅"),
+          el("button", {
+            class: "btn btn-ghost btn-sm", type: "button", style: { color: "#fca5a5" }, onclick: async function () {
+              var updated = await setPnmDecision(selected.id, "nobid");
+              if (updated) { selected.decision = updated.decision; selected.decisionAt = updated.decisionAt; selected.decisionBy = updated.decisionBy; selected.stage = updated.stage; }
+              renderTabContent();
+            }
+          }, "No Bid ❌")
+        ));
+      }
+    }
+    refreshDecision();
 
     dossierCol.appendChild(el("div", { class: "dossier-head" },
       el("div", { class: "avatar-lg" }, initials(selected.name)),
@@ -1490,6 +1706,10 @@ function renderDeliberations() {
       el("div", { class: "section-title" }, "Notes Timeline"),
       notesList,
       el("div", { class: "inline-add" }, noteI, addNoteBtn)
+    ));
+    dossierCol.appendChild(el("div", { class: "section-divider" },
+      el("div", { class: "section-title" }, "Final Decision"),
+      decisionWrap
     ));
     dossierCol.appendChild(el("div", { class: "section-divider" },
       el("div", { style: { display: "flex", alignItems: "center" } },
@@ -1524,7 +1744,14 @@ function renderTeam() {
           el("span", { style: { fontSize: "13px" } }, p.name),
           el("div", { style: { display: "flex", gap: "6px" } },
             el("button", { class: "btn btn-primary btn-sm", onclick: function () { approveProfile(p.id, "brother", p.name); } }, "Approve"),
-            el("button", { class: "btn btn-ghost btn-sm", onclick: function () { approveProfile(p.id, "admin", p.name); } }, "Make Admin")
+            el("button", { class: "btn btn-ghost btn-sm", onclick: function () { approveProfile(p.id, "admin", p.name); } }, "Make Admin"),
+            el("button", {
+              class: "btn-xs", style: { color: "#fca5a5" },
+              onclick: function () {
+                if (!window.confirm("Decline " + p.name + "'s request to join? This can't be undone — they'd need to sign up again.")) return;
+                deleteProfile(p.id);
+              }
+            }, "Decline")
           )
         ));
       });
@@ -1540,7 +1767,13 @@ function renderTeam() {
     list.appendChild(el("div", { class: "roster-row" },
       el("span", { style: { fontSize: "13px" } }, b.name, b.role === "admin" ? el("span", { class: "role-pill" }, "Admin") : null),
       isAdmin && b.id !== state.profile.id
-        ? el("button", { class: "btn-xs", style: { color: "#fca5a5" }, onclick: function () { approveProfile(b.id, "pending"); } }, "Revoke")
+        ? el("button", {
+            class: "btn-xs", style: { color: "#fca5a5" },
+            onclick: function () {
+              if (!window.confirm("Kick " + b.name + " off the roster? They'll lose access immediately. This is permanent — they can't sign back in unless you manually give them access again.")) return;
+              deleteProfile(b.id);
+            }
+          }, "Kick")
         : null
     ));
   });
@@ -1592,13 +1825,15 @@ function renderGate() {
   }
   mount(root, content);
 }
-function renderPendingGate() {
+function renderPendingGate(wasRemoved) {
   var root = document.getElementById("gate-root");
   mount(root, el("div", { class: "pending-card" },
     el("div", { class: "brand-logo", html: PULSE_ICON, style: { margin: "0 auto 14px" } }),
-    el("h3", { style: { margin: "0 0 8px" } }, "Waiting for approval"),
+    el("h3", { style: { margin: "0 0 8px" } }, wasRemoved ? "Access removed" : "Waiting for approval"),
     el("p", { style: { color: "var(--dimmer)", fontSize: "13px", margin: "0 0 18px" } },
-      "Your account is created — an admin (your Rush Chair) needs to approve you before you can see or edit anything."),
+      wasRemoved
+        ? "An admin removed your access to RushPulse. If you think this is a mistake, reach out to your Rush Chair."
+        : "Your account is created — an admin (your Rush Chair) needs to approve you before you can see or edit anything."),
     el("button", { class: "btn btn-ghost", onclick: function () { signOut(); } }, "Sign out")
   ));
 }
@@ -1662,7 +1897,7 @@ async function boot() {
   }
   state.profile = await fetchProfile(state.session.user.id);
   if (!state.profile || state.profile.role === "pending") {
-    renderPendingGate();
+    renderPendingGate(!state.profile);
     showGateRoot();
     return;
   }
