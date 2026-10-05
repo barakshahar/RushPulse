@@ -121,10 +121,9 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 .col-contacted{border-left-color:var(--cyan);}
 .col-interested{border-left-color:var(--amber);}
 .col-not-interested{border-left-color:var(--red);}
-.col-discovered{border-left-color:var(--dimmer);}
-.col-attended-event{border-left-color:var(--cyan);}
-.col-interview{border-left-color:var(--violet);}
-.col-invite-only{border-left-color:var(--indigo2);}
+.col-attended-1-event{border-left-color:var(--cyan);}
+.col-attended-2-events{border-left-color:var(--violet);}
+.col-attended-3-events{border-left-color:var(--indigo2);}
 .col-potential-lock{border-left-color:#c084fc;}
 .col-bid-extended{border-left-color:var(--amber);}
 .col-bid-accepted{border-left-color:var(--green);}
@@ -292,7 +291,8 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 var OUTREACH_STATUSES = ["Uncontacted", "Contacted", "Interested"];
 var NOT_INTERESTED = "Not Interested";
 var SCOUTING_COLUMNS = OUTREACH_STATUSES.concat([NOT_INTERESTED]);
-var STAGES = ["Discovered", "Attended Event", "Interview", "Invite Only", "Potential Lock", "Bid Extended", "Bid Accepted", "Dropped"];
+var STAGES = ["Attended 1 Event", "Attended 2 Events", "Attended 3 Events", "Potential Lock", "Bid Extended", "Bid Accepted", "Dropped"];
+var DEFAULT_STAGE = STAGES[0];
 var EVENT_OPTIONS = ["Event 1", "Event 2", "Event 3", "Invite Only"];
 var PULSE_ICON = '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><path d="M5 22h6l3-12 5 22 4-16 2.5 6h11.5" fill="none" stroke="white" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -448,6 +448,11 @@ function defaultData() { return { prospects: [], pnms: [] }; }
 function migrateData(d) {
   (d.prospects || []).forEach(function (p) {
     if (p.outreachStatus === "Warm Response") p.outreachStatus = "Interested";
+  });
+  // Retired stages (Discovered / Attended Event / Interview / Invite Only)
+  // fold into the first stage so nobody vanishes from the Rush Tracker.
+  (d.pnms || []).forEach(function (p) {
+    if (STAGES.indexOf(p.stage) === -1) p.stage = DEFAULT_STAGE;
   });
   return d;
 }
@@ -626,7 +631,7 @@ async function promoteToPNM(prospectId) {
   var pnm = {
     id: uid(), name: p.name, phone: p.phone, email: p.email, instagram: p.instagram,
     hometown: p.hometown, highSchool: p.highSchool, major: p.major, classYear: p.classYear,
-    vouchedBy: p.vouchedBy, jewish: p.jewish || "TBD", legacy: p.legacy || "TBD", connections: p.connections || "", rushCrush: p.rushCrush || "", vibeRating: 0, stage: "Discovered",
+    vouchedBy: p.vouchedBy, jewish: p.jewish || "TBD", legacy: p.legacy || "TBD", connections: p.connections || "", rushCrush: p.rushCrush || "", vibeRating: 0, stage: DEFAULT_STAGE,
     eventsAttended: [], notes: p.notes ? [{ id: uid(), author: p.vouchedBy || "Scouting", text: p.notes, date: today() }] : [],
     votes: {}, decision: null, decisionAt: null, decisionBy: null, promotedFromProspectId: p.id, createdAt: p.createdAt, promotedAt: today()
   };
@@ -674,7 +679,7 @@ async function demoteToScouting(pnmId) {
 async function addPnmQuick(fields) {
   var pnm = {
     id: uid(), name: "", phone: "", email: "", instagram: "", hometown: "", highSchool: "",
-    major: "", classYear: "", vouchedBy: "", jewish: "TBD", legacy: "TBD", connections: "", rushCrush: "", vibeRating: 0, stage: "Discovered",
+    major: "", classYear: "", vouchedBy: "", jewish: "TBD", legacy: "TBD", connections: "", rushCrush: "", vibeRating: 0, stage: DEFAULT_STAGE,
     eventsAttended: [], notes: [], votes: {}, decision: null, decisionAt: null, decisionBy: null, promotedFromProspectId: null, createdAt: today()
   };
   for (var k in fields) pnm[k] = fields[k];
@@ -1180,7 +1185,7 @@ function renderQuickLogModal() {
   var newNameI = el("input", { class: "input", placeholder: "Quick add a new person" });
   var vouchI = el("input", { class: "input", placeholder: "Brother name", list: "brothers-dl-2" });
   var stageSel = el("select", { class: "input" }, STAGES.map(function (s) {
-    return el("option", { value: s, selected: s === "Attended Event" }, s);
+    return el("option", { value: s, selected: s === DEFAULT_STAGE }, s);
   }));
 
   var existingWrap = el("div", {}, field("Who", existingSel));
