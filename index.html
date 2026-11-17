@@ -240,7 +240,7 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 .showall-label{margin-left:auto;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px;}
 
 /* roster */
-.roster-wrap{max-width:420px;}
+.roster-wrap{max-width:520px;}
 .roster-row{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:6px;}
 .roster-hint{font-size:12px;color:var(--dimmer);margin-bottom:14px;}
 
@@ -274,6 +274,17 @@ main{max-width:1920px;margin:0 auto;padding:18px 16px 0;}
 .event-dropdown-option:hover{background:rgba(255,255,255,.06);}
 .event-dropdown-option.selected{color:var(--text);}
 .event-dropdown-check{color:var(--green);font-weight:700;}
+
+/* multi-select mode (Photos-style) */
+.select-bar{position:sticky;top:10px;z-index:28;display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:rgba(21,21,29,.94);backdrop-filter:blur(10px);border:1px solid rgba(139,127,255,.4);border-radius:14px;padding:10px 14px;margin-bottom:14px;box-shadow:0 12px 32px -12px rgba(0,0,0,.7);}
+.select-bar-count{font-size:13px;font-weight:600;color:#e5e3ff;margin-right:auto;}
+.select-check{width:20px;height:20px;border-radius:999px;border:1.5px solid var(--dimmer);background:rgba(12,12,18,.78);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:transparent;flex-shrink:0;transition:.15s;}
+.select-check.checked{background:linear-gradient(135deg,var(--indigo),var(--violet));border-color:#c4b5fd;color:#fff;box-shadow:0 0 10px rgba(139,127,255,.5);}
+.k-select-check{position:absolute;top:8px;right:8px;}
+.p-card.selectable,.k-card.selectable{cursor:pointer;user-select:none;}
+.p-card.selected-card,.k-card.selected-card{border-color:var(--indigo2);background:linear-gradient(135deg,rgba(91,82,240,.22),rgba(236,72,153,.11));box-shadow:0 0 0 1px var(--indigo2),0 8px 22px -12px rgba(91,82,240,.65);}
+.col-select-btn{background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--dim);font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;cursor:pointer;transition:.15s;}
+.col-select-btn:hover{color:var(--text);border-color:var(--indigo2);}
 </style>
 </head>
 <body>
@@ -364,7 +375,11 @@ function avatarNode(person, cls) {
     node.className = cls + " zoomable";
     node.title = "Click to enlarge";
     node.appendChild(el("img", { src: person.photo, alt: person.name || "" }));
-    node.addEventListener("click", function (e) { e.stopPropagation(); openPhotoViewer(person); });
+    node.addEventListener("click", function (e) {
+      if ((state.tab === "tracker" && state.trackerSelectMode) || (state.tab === "scouting" && state.scoutingSelectMode)) return;
+      e.stopPropagation();
+      openPhotoViewer(person);
+    });
   } else node.appendChild(document.createTextNode(initials(person.name)));
   return node;
 }
@@ -557,7 +572,9 @@ var state = {
   tab: "scouting",
   mobileNavOpen: false,    // hamburger menu open state (mobile widths only)
   scoutingSearch: "", scoutingHometown: "", scoutingSchool: "", scoutingMajor: "", scoutingJewish: "",
+  scoutingSelectMode: false, scoutingSelectedIds: {},
   trackerSearch: "", trackerHometown: "", trackerSchool: "", trackerMajor: "", trackerJewish: "",
+  trackerSelectMode: false, trackerSelectedIds: {},
   prospectModal: null,      // { mode:'add'|'edit', prospect }
   quickLogOpen: false,
   quickLogMode: "existing",
@@ -641,6 +658,13 @@ async function approveProfile(id, role, name) {
   renderTabContent();
   showToast("Updated", "success");
 }
+async function setProfileRole(id, role) {
+  var res = await sb.from("profiles").update({ role: role }).eq("id", id);
+  if (res.error) { showToast("Couldn't update role — " + res.error.message, "error"); return; }
+  await fetchProfileLists();
+  renderTabContent();
+  showToast(role === "admin" ? "Promoted to Admin" : "Updated role", "success");
+}
 // Fully removes a profile row — used to decline a pending join request or to
 // kick an active brother off the roster outright. Their Supabase login
 // itself isn't deleted (that needs a service-role key we don't put in the
@@ -679,6 +703,17 @@ async function editProspect(id, patch) {
 }
 async function deleteProspect(id) {
   await withData(function (d) { d.prospects = d.prospects.filter(function (p) { return p.id !== id; }); });
+}
+async function deleteProspectsBulk(ids) {
+  var idSet = {};
+  ids.forEach(function (id) { idSet[id] = true; });
+  var removedCount = 0;
+  var saved = await withData(function (d) {
+    var before = d.prospects.length;
+    d.prospects = d.prospects.filter(function (p) { return !idSet[p.id]; });
+    removedCount = before - d.prospects.length;
+  });
+  return saved ? removedCount : -1;
 }
 async function promoteToPNM(prospectId) {
   var fresh = await fetchAppData();
@@ -754,6 +789,26 @@ async function editPnm(id, patch) {
 }
 async function deletePnm(id) {
   await withData(function (d) { d.pnms = d.pnms.filter(function (p) { return p.id !== id; }); });
+}
+async function deletePnmsBulk(ids) {
+  var idSet = {};
+  ids.forEach(function (id) { idSet[id] = true; });
+  var removedCount = 0;
+  var saved = await withData(function (d) {
+    var before = d.pnms.length;
+    d.pnms = d.pnms.filter(function (p) { return !idSet[p.id]; });
+    removedCount = before - d.pnms.length;
+  });
+  return saved ? removedCount : -1;
+}
+async function clearPnmsInStages(stages) {
+  var removedCount = 0;
+  var saved = await withData(function (d) {
+    var before = d.pnms.length;
+    d.pnms = d.pnms.filter(function (p) { return stages.indexOf(p.stage) === -1; });
+    removedCount = before - d.pnms.length;
+  });
+  return saved ? removedCount : -1;
 }
 async function movePnmStage(id, stage) { await editPnm(id, { stage: stage }); }
 // Finalizes a chapter's decision on a PNM from Deliberations — separate
@@ -1079,8 +1134,105 @@ function renderQuickAddModal() {
   openModal("⚡ Quick Add", body);
 }
 
+function openBulkDeleteModal(kind, records, onDeleted) {
+  if (!records || records.length === 0) return;
+  var preview = records.slice(0, 6).map(function (r) { return r.name || "Unnamed"; });
+  var remaining = records.length - preview.length;
+  var confirmBtn = el("button", {
+    class: "btn btn-danger", type: "button",
+    onclick: async function () {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "Deleting…";
+      var ids = records.map(function (r) { return r.id; });
+      var removed = kind === "pnm" ? await deletePnmsBulk(ids) : await deleteProspectsBulk(ids);
+      closeModal();
+      if (removed >= 0) {
+        onDeleted();
+        showToast("Deleted " + removed + " profile" + (removed === 1 ? "" : "s"), "success");
+      }
+    }
+  }, "Delete " + records.length + " Profile" + (records.length === 1 ? "" : "s"));
+
+  var body = el("div", {},
+    el("p", { style: { margin: "0 0 10px", fontSize: "13.5px", color: "var(--dim)" } },
+      "Are you sure you want to permanently delete " + records.length + " selected " + (kind === "pnm" ? "PNM" : "prospect") + " profile" + (records.length === 1 ? "" : "s") + "? This can't be undone."
+    ),
+    el("div", { class: "mini-list", style: { marginBottom: "14px" } },
+      preview.map(function (name) { return el("div", { class: "note-item" }, name); }),
+      remaining > 0 ? el("div", { class: "empty-note", style: { padding: "2px 4px" } }, "…and " + remaining + " more") : null
+    ),
+    el("div", { class: "modal-footer" },
+      el("button", { class: "btn btn-ghost", type: "button", onclick: closeModal }, "Cancel"),
+      confirmBtn
+    )
+  );
+  openModal("Delete Selected Profiles", body);
+}
+
+function getFilteredScoutingProspects() {
+  var active = state.data.prospects.filter(function (p) { return !p.promotedToPnm; });
+  var search = state.scoutingSearch.toLowerCase();
+  return active.filter(function (p) {
+    var matchesSearch = !search || p.name.toLowerCase().indexOf(search) !== -1 || normalizeIG(p.instagram).indexOf(search) !== -1;
+    return matchesSearch &&
+      (!state.scoutingHometown || p.hometown === state.scoutingHometown) &&
+      (!state.scoutingSchool || p.highSchool === state.scoutingSchool) &&
+      (!state.scoutingMajor || p.major === state.scoutingMajor) &&
+      (!state.scoutingJewish || (p.jewish || "TBD") === state.scoutingJewish);
+  });
+}
+
+function updateScoutingSelectBar() {
+  var bar = document.getElementById("scouting-select-bar");
+  if (!bar) return;
+  if (!state.scoutingSelectMode) { bar.classList.add("hidden"); clearNode(bar); return; }
+  bar.classList.remove("hidden");
+  var visible = getFilteredScoutingProspects();
+  var selectedVisible = visible.filter(function (p) { return !!state.scoutingSelectedIds[p.id]; });
+  var allSelectedRecords = state.data.prospects.filter(function (p) { return !p.promotedToPnm && !!state.scoutingSelectedIds[p.id]; });
+  var count = allSelectedRecords.length;
+
+  mount(bar,
+    el("span", { class: "select-bar-count" }, count + " selected"),
+    el("button", {
+      class: "btn btn-ghost btn-sm", type: "button",
+      disabled: visible.length === 0,
+      onclick: function () {
+        var allChecked = visible.length > 0 && selectedVisible.length === visible.length;
+        visible.forEach(function (p) {
+          if (allChecked) delete state.scoutingSelectedIds[p.id];
+          else state.scoutingSelectedIds[p.id] = true;
+        });
+        refreshScoutingColumns();
+      }
+    }, (visible.length > 0 && selectedVisible.length === visible.length) ? "Deselect Visible" : "Select All (" + visible.length + ")"),
+    el("button", {
+      class: "btn btn-ghost btn-sm", type: "button",
+      disabled: count === 0,
+      onclick: function () { state.scoutingSelectedIds = {}; refreshScoutingColumns(); }
+    }, "Clear"),
+    el("button", {
+      class: "btn btn-danger btn-sm", type: "button",
+      disabled: count === 0,
+      onclick: function () {
+        openBulkDeleteModal("prospect", allSelectedRecords, function () {
+          state.scoutingSelectedIds = {};
+          state.scoutingSelectMode = false;
+          renderTabContent();
+        });
+      }
+    }, "Delete Selected (" + count + ")"),
+    el("button", {
+      class: "btn btn-ghost btn-sm", type: "button",
+      onclick: function () { state.scoutingSelectMode = false; state.scoutingSelectedIds = {}; renderTabContent(); }
+    }, "Done")
+  );
+}
+
 function buildProspectCard(p) {
   var idx = OUTREACH_STATUSES.indexOf(p.outreachStatus);
+  var selecting = state.scoutingSelectMode;
+  var isSelected = selecting && !!state.scoutingSelectedIds[p.id];
   var details = el("div", { class: "p-details hidden" },
     p.notes ? el("p", {}, p.notes) : null,
     p.phone ? el("div", { class: "row" }, "📞 " + p.phone) : null,
@@ -1139,22 +1291,36 @@ function buildProspectCard(p) {
     }, "Promote to PNM →"));
   }
 
-  return el("div", { class: "p-card" + (isNotInterested ? " dead" : ""), onclick: function () { openProspectModal(p); } },
+  var cardClass = "p-card" + (isNotInterested ? " dead" : "") + (selecting ? " selectable" : "") + (isSelected ? " selected-card" : "");
+  return el("div", {
+    class: cardClass,
+    onclick: function () {
+      if (selecting) {
+        if (state.scoutingSelectedIds[p.id]) delete state.scoutingSelectedIds[p.id];
+        else state.scoutingSelectedIds[p.id] = true;
+        refreshScoutingColumns();
+        return;
+      }
+      openProspectModal(p);
+    }
+  },
     el("div", { class: "p-card-top" },
       el("div", { class: "p-card-id" },
         avatarNode(p, "avatar"),
         el("div", { style: { minWidth: 0 } },
           el("div", { class: "p-name" }, p.name),
-          igLink(p.instagram)
+          selecting ? (p.instagram ? el("span", { class: "p-ig" }, "@" + normalizeIG(p.instagram)) : null) : igLink(p.instagram)
         )
       ),
-      el("div", { style: { display: "flex", gap: "2px" } }, trashBtn, toggleBtn)
+      selecting
+        ? el("span", { class: "select-check" + (isSelected ? " checked" : "") }, "✓")
+        : el("div", { style: { display: "flex", gap: "2px" } }, trashBtn, toggleBtn)
     ),
     badges,
     p.vouchedBy ? el("div", { class: "p-vouch" }, "Vouched by ", el("span", {}, p.vouchedBy)) : null,
     p.connections ? el("div", { class: "p-vouch" }, "Connections: ", el("span", {}, p.connections)) : null,
-    details,
-    actions
+    selecting ? null : details,
+    selecting ? null : actions
   );
 }
 
@@ -1170,18 +1336,31 @@ function renderScouting() {
     el("option", { value: "TBD", selected: state.scoutingJewish === "TBD" }, "Jewish: TBD")
   );
   var searchI = el("input", { class: "input", placeholder: "Search name or @instagram…", value: state.scoutingSearch, oninput: function (e) { state.scoutingSearch = e.target.value; refreshScoutingColumns(); } });
+  var selectToggleBtn = el("button", {
+    class: "btn " + (state.scoutingSelectMode ? "btn-primary" : "btn-ghost"),
+    style: { marginLeft: "auto" },
+    onclick: function () {
+      state.scoutingSelectMode = !state.scoutingSelectMode;
+      if (!state.scoutingSelectMode) state.scoutingSelectedIds = {};
+      renderTabContent();
+    }
+  }, state.scoutingSelectMode ? "Done Selecting" : "☑ Select");
 
   var filterBar = el("div", { class: "filter-bar" },
     searchI, hometownSel, schoolSel, majorSel, jewishSel,
-    el("button", { class: "btn btn-ghost", style: { marginLeft: "auto" }, onclick: renderQuickAddModal }, "⚡ Quick Add"),
+    selectToggleBtn,
+    el("button", { class: "btn btn-ghost", onclick: renderQuickAddModal }, "⚡ Quick Add"),
     el("button", { class: "btn btn-primary", onclick: function () { openProspectModal(null); } }, "+ Add Prospect")
   );
+  var selectBar = el("div", { id: "scouting-select-bar", class: "select-bar hidden" });
   var columns = el("div", { class: "columns-grid", id: "scouting-columns" });
   wrap.appendChild(filterBar);
+  wrap.appendChild(selectBar);
   wrap.appendChild(columns);
 
   fillFilterOptions(hometownSel, schoolSel, majorSel);
   fillScoutingColumns(columns);
+  updateScoutingSelectBar();
   return wrap;
 }
 function fillFilterOptions(hometownSel, schoolSel, majorSel) {
@@ -1201,24 +1380,32 @@ function fillFilterOptions(hometownSel, schoolSel, majorSel) {
 function refreshScoutingColumns() {
   var container = document.getElementById("scouting-columns");
   if (container) fillScoutingColumns(container);
+  updateScoutingSelectBar();
 }
 function fillScoutingColumns(container) {
   clearNode(container);
-  var active = state.data.prospects.filter(function (p) { return !p.promotedToPnm; });
-  var search = state.scoutingSearch.toLowerCase();
-  var filtered = active.filter(function (p) {
-    var matchesSearch = !search || p.name.toLowerCase().indexOf(search) !== -1 || normalizeIG(p.instagram).indexOf(search) !== -1;
-    return matchesSearch &&
-      (!state.scoutingHometown || p.hometown === state.scoutingHometown) &&
-      (!state.scoutingSchool || p.highSchool === state.scoutingSchool) &&
-      (!state.scoutingMajor || p.major === state.scoutingMajor) &&
-      (!state.scoutingJewish || (p.jewish || "TBD") === state.scoutingJewish);
-  });
+  var filtered = getFilteredScoutingProspects();
   SCOUTING_COLUMNS.forEach(function (status) {
     var list = filtered.filter(function (p) { return (p.outreachStatus || "Uncontacted") === status; });
     var isDead = status === NOT_INTERESTED;
+    var allInColSelected = list.length > 0 && list.every(function (p) { return !!state.scoutingSelectedIds[p.id]; });
     var col = el("div", { class: "column" + (isDead ? " dead" : "") + " col-" + slug(status) },
-      el("div", { class: "column-header" }, el("div", { class: "column-title" }, status), badge(String(list.length), isDead ? "red" : null)),
+      el("div", { class: "column-header" },
+        el("div", { class: "column-title" }, status),
+        el("div", { style: { display: "flex", alignItems: "center", gap: "6px" } },
+          (state.scoutingSelectMode && list.length > 0) ? el("button", {
+            type: "button", class: "col-select-btn",
+            onclick: function () {
+              list.forEach(function (p) {
+                if (allInColSelected) delete state.scoutingSelectedIds[p.id];
+                else state.scoutingSelectedIds[p.id] = true;
+              });
+              refreshScoutingColumns();
+            }
+          }, allInColSelected ? "None" : "All") : null,
+          badge(String(list.length), isDead ? "red" : null)
+        )
+      ),
       el("div", { class: "card-list" },
         list.length ? list.map(buildProspectCard) : el("div", { class: "column-empty" }, "Nothing here")
       )
@@ -1484,8 +1671,69 @@ function renderPnmDetailModal(pnm) {
   openModal(pnm.name, body, { wide: true });
 }
 
+function getFilteredTrackerPnms() {
+  var search = state.trackerSearch.toLowerCase();
+  return state.data.pnms.filter(function (p) {
+    var matchesSearch = !search || p.name.toLowerCase().indexOf(search) !== -1 || normalizeIG(p.instagram).indexOf(search) !== -1;
+    return matchesSearch &&
+      (!state.trackerHometown || p.hometown === state.trackerHometown) &&
+      (!state.trackerSchool || p.highSchool === state.trackerSchool) &&
+      (!state.trackerMajor || p.major === state.trackerMajor) &&
+      (!state.trackerJewish || (p.jewish || "TBD") === state.trackerJewish);
+  });
+}
+
+function updateTrackerSelectBar() {
+  var bar = document.getElementById("tracker-select-bar");
+  if (!bar) return;
+  if (!state.trackerSelectMode) { bar.classList.add("hidden"); clearNode(bar); return; }
+  bar.classList.remove("hidden");
+  var visible = getFilteredTrackerPnms();
+  var selectedVisible = visible.filter(function (p) { return !!state.trackerSelectedIds[p.id]; });
+  var allSelectedRecords = state.data.pnms.filter(function (p) { return !!state.trackerSelectedIds[p.id]; });
+  var count = allSelectedRecords.length;
+
+  mount(bar,
+    el("span", { class: "select-bar-count" }, count + " selected"),
+    el("button", {
+      class: "btn btn-ghost btn-sm", type: "button",
+      disabled: visible.length === 0,
+      onclick: function () {
+        var allChecked = visible.length > 0 && selectedVisible.length === visible.length;
+        visible.forEach(function (p) {
+          if (allChecked) delete state.trackerSelectedIds[p.id];
+          else state.trackerSelectedIds[p.id] = true;
+        });
+        refreshTrackerColumns();
+      }
+    }, (visible.length > 0 && selectedVisible.length === visible.length) ? "Deselect Visible" : "Select All (" + visible.length + ")"),
+    el("button", {
+      class: "btn btn-ghost btn-sm", type: "button",
+      disabled: count === 0,
+      onclick: function () { state.trackerSelectedIds = {}; refreshTrackerColumns(); }
+    }, "Clear"),
+    el("button", {
+      class: "btn btn-danger btn-sm", type: "button",
+      disabled: count === 0,
+      onclick: function () {
+        openBulkDeleteModal("pnm", allSelectedRecords, function () {
+          state.trackerSelectedIds = {};
+          state.trackerSelectMode = false;
+          renderTabContent();
+        });
+      }
+    }, "Delete Selected (" + count + ")"),
+    el("button", {
+      class: "btn btn-ghost btn-sm", type: "button",
+      onclick: function () { state.trackerSelectMode = false; state.trackerSelectedIds = {}; renderTabContent(); }
+    }, "Done")
+  );
+}
+
 function buildKanbanCard(pnm) {
   var votesArr = Object.keys(pnm.votes || {}).map(function (k) { return pnm.votes[k]; });
+  var selecting = state.trackerSelectMode;
+  var isSelected = selecting && !!state.trackerSelectedIds[pnm.id];
   var deleteBtn = el("button", {
     class: "k-delete", type: "button", title: "Delete " + pnm.name,
     onclick: async function (e) {
@@ -1506,8 +1754,13 @@ function buildKanbanCard(pnm) {
       renderTabContent();
     }
   }, STAGES.map(function (s) { return el("option", { value: s, selected: pnm.stage === s }, s); }));
-  var card = el("div", { class: "k-card", draggable: true },
-    deleteBtn,
+  var card = el("div", {
+    class: "k-card" + (selecting ? " selectable" : "") + (isSelected ? " selected-card" : ""),
+    draggable: !selecting
+  },
+    selecting
+      ? el("span", { class: "select-check k-select-check" + (isSelected ? " checked" : "") }, "✓")
+      : deleteBtn,
     el("div", { class: "k-card-top" },
       avatarNode(pnm, "avatar"),
       el("div", { class: "k-name" }, pnm.name)
@@ -1521,16 +1774,80 @@ function buildKanbanCard(pnm) {
       badge("L: " + (pnm.legacy || "TBD"), statusBadgeTone(pnm.legacy || "TBD")),
       pnm.rushCrush ? badge("💘 " + pnm.rushCrush, "pink") : null
     ),
-    moveSel
+    selecting ? null : moveSel
   );
-  card.addEventListener("click", function () { renderPnmDetailModal(pnm); });
-  card.addEventListener("dragstart", function (e) {
-    draggedPnmId = pnm.id;
-    e.dataTransfer.setData("text/plain", pnm.id);
-    card.classList.add("dragging");
+  card.addEventListener("click", function () {
+    if (selecting) {
+      if (state.trackerSelectedIds[pnm.id]) delete state.trackerSelectedIds[pnm.id];
+      else state.trackerSelectedIds[pnm.id] = true;
+      refreshTrackerColumns();
+      return;
+    }
+    renderPnmDetailModal(pnm);
   });
-  card.addEventListener("dragend", function () { card.classList.remove("dragging"); draggedPnmId = null; });
+  if (!selecting) {
+    card.addEventListener("dragstart", function (e) {
+      draggedPnmId = pnm.id;
+      e.dataTransfer.setData("text/plain", pnm.id);
+      card.classList.add("dragging");
+    });
+    card.addEventListener("dragend", function () { card.classList.remove("dragging"); draggedPnmId = null; });
+  }
   return card;
+}
+
+var CLEARABLE_TRACKER_STAGES = ["Bid Extended", "Bid Accepted", "Dropped"];
+
+function openClearTrackerStagesModal() {
+  var counts = {};
+  CLEARABLE_TRACKER_STAGES.forEach(function (s) { counts[s] = 0; });
+  state.data.pnms.forEach(function (p) {
+    if (CLEARABLE_TRACKER_STAGES.indexOf(p.stage) !== -1) counts[p.stage]++;
+  });
+  var total = CLEARABLE_TRACKER_STAGES.reduce(function (sum, s) { return sum + counts[s]; }, 0);
+  if (total === 0) return;
+
+  var confirmBtn = el("button", {
+    class: "btn btn-danger", type: "button",
+    onclick: async function () {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "Removing…";
+      var removed = await clearPnmsInStages(CLEARABLE_TRACKER_STAGES);
+      closeModal();
+      if (removed >= 0) {
+        renderTabContent();
+        showToast("Removed " + removed + " profile" + (removed === 1 ? "" : "s"), "success");
+      }
+    }
+  }, "Remove All (" + total + ")");
+
+  var body = el("div", {},
+    el("p", { style: { margin: "0 0 12px", fontSize: "13.5px", color: "var(--dim)" } },
+      "This will permanently remove all PNM profiles currently in these Rush Tracker categories:"
+    ),
+    el("div", { class: "mini-list", style: { marginBottom: "14px" } },
+      CLEARABLE_TRACKER_STAGES.map(function (s) {
+        return el("div", { class: "note-item", style: { display: "flex", justifyContent: "space-between" } },
+          el("span", {}, s),
+          badge(String(counts[s]), s === "Bid Accepted" ? "green" : s === "Dropped" ? "red" : "amber")
+        );
+      })
+    ),
+    el("div", { class: "modal-footer" },
+      el("button", { class: "btn btn-ghost", type: "button", onclick: closeModal }, "Cancel"),
+      confirmBtn
+    )
+  );
+  openModal("Clear Completed & Dropped PNMs", body);
+}
+
+function updateClearTrackerBtn(btn) {
+  if (!btn) return;
+  var count = state.data.pnms.filter(function (p) {
+    return CLEARABLE_TRACKER_STAGES.indexOf(p.stage) !== -1;
+  }).length;
+  btn.textContent = "🗑 Clear Bid / Dropped (" + count + ")";
+  btn.classList.toggle("hidden", count === 0);
 }
 
 function renderTracker() {
@@ -1547,14 +1864,33 @@ function renderTracker() {
     el("option", { value: "TBD", selected: state.trackerJewish === "TBD" }, "Jewish: TBD")
   );
   var searchI = el("input", { class: "input", placeholder: "Search name or @instagram…", value: state.trackerSearch, oninput: function (e) { state.trackerSearch = e.target.value; refreshTrackerColumns(); } });
-  var filterBar = el("div", { class: "filter-bar" }, searchI, hometownSel, schoolSel, majorSel, jewishSel);
+  var selectToggleBtn = el("button", {
+    class: "btn " + (state.trackerSelectMode ? "btn-primary" : "btn-ghost"),
+    style: { marginLeft: "auto" },
+    type: "button",
+    onclick: function () {
+      state.trackerSelectMode = !state.trackerSelectMode;
+      if (!state.trackerSelectMode) state.trackerSelectedIds = {};
+      renderTabContent();
+    }
+  }, state.trackerSelectMode ? "Done Selecting" : "☑ Select");
+  var clearBtn = el("button", {
+    id: "tracker-clear-btn", class: "btn btn-danger", type: "button",
+    onclick: openClearTrackerStagesModal
+  });
+  updateClearTrackerBtn(clearBtn);
+  var filterBar = el("div", { class: "filter-bar" }, searchI, hometownSel, schoolSel, majorSel, jewishSel, selectToggleBtn, clearBtn);
   wrap.appendChild(filterBar);
+
+  var selectBar = el("div", { id: "tracker-select-bar", class: "select-bar hidden" });
+  wrap.appendChild(selectBar);
 
   var kanban = el("div", { class: "kanban-wrap", id: "tracker-columns" });
   wrap.appendChild(kanban);
 
   fillTrackerFilterOptions(hometownSel, schoolSel, majorSel);
   fillTrackerColumns(kanban);
+  updateTrackerSelectBar();
   return wrap;
 }
 function fillTrackerFilterOptions(hometownSel, schoolSel, majorSel) {
@@ -1574,36 +1910,45 @@ function fillTrackerFilterOptions(hometownSel, schoolSel, majorSel) {
 function refreshTrackerColumns() {
   var container = document.getElementById("tracker-columns");
   if (container) fillTrackerColumns(container);
+  updateClearTrackerBtn(document.getElementById("tracker-clear-btn"));
+  updateTrackerSelectBar();
 }
 function fillTrackerColumns(container) {
   clearNode(container);
-  var search = state.trackerSearch.toLowerCase();
-  var filtered = state.data.pnms.filter(function (p) {
-    var matchesSearch = !search || p.name.toLowerCase().indexOf(search) !== -1 || normalizeIG(p.instagram).indexOf(search) !== -1;
-    return matchesSearch &&
-      (!state.trackerHometown || p.hometown === state.trackerHometown) &&
-      (!state.trackerSchool || p.highSchool === state.trackerSchool) &&
-      (!state.trackerMajor || p.major === state.trackerMajor) &&
-      (!state.trackerJewish || (p.jewish || "TBD") === state.trackerJewish);
-  });
+  var filtered = getFilteredTrackerPnms();
   STAGES.forEach(function (stage) {
     var list = filtered.filter(function (p) { return p.stage === stage; });
+    var allInColSelected = list.length > 0 && list.every(function (p) { return !!state.trackerSelectedIds[p.id]; });
     var col = el("div", { class: "kanban-col col-" + slug(stage) },
       el("div", { class: "column-header" },
         el("div", { class: "column-title" }, stage),
-        badge(String(list.length), stage === "Bid Accepted" ? "green" : stage === "Dropped" ? "red" : null)
+        el("div", { style: { display: "flex", alignItems: "center", gap: "6px" } },
+          (state.trackerSelectMode && list.length > 0) ? el("button", {
+            type: "button", class: "col-select-btn",
+            onclick: function () {
+              list.forEach(function (p) {
+                if (allInColSelected) delete state.trackerSelectedIds[p.id];
+                else state.trackerSelectedIds[p.id] = true;
+              });
+              refreshTrackerColumns();
+            }
+          }, allInColSelected ? "None" : "All") : null,
+          badge(String(list.length), stage === "Bid Accepted" ? "green" : stage === "Dropped" ? "red" : null)
+        )
       ),
       el("div", { class: "card-list" }, list.length ? list.map(buildKanbanCard) : el("div", { class: "column-empty" }, "Drop here"))
     );
-    col.addEventListener("dragover", function (e) { e.preventDefault(); col.classList.add("drop-hover"); });
-    col.addEventListener("dragleave", function () { col.classList.remove("drop-hover"); });
-    col.addEventListener("drop", async function (e) {
-      e.preventDefault();
-      col.classList.remove("drop-hover");
-      var id = e.dataTransfer.getData("text/plain") || draggedPnmId;
-      if (id) await movePnmStage(id, stage);
-      refreshTrackerColumns();
-    });
+    if (!state.trackerSelectMode) {
+      col.addEventListener("dragover", function (e) { e.preventDefault(); col.classList.add("drop-hover"); });
+      col.addEventListener("dragleave", function () { col.classList.remove("drop-hover"); });
+      col.addEventListener("drop", async function (e) {
+        e.preventDefault();
+        col.classList.remove("drop-hover");
+        var id = e.dataTransfer.getData("text/plain") || draggedPnmId;
+        if (id) await movePnmStage(id, stage);
+        refreshTrackerColumns();
+      });
+    }
     container.appendChild(col);
   });
 }
@@ -1861,13 +2206,27 @@ function renderTeam() {
     list.appendChild(el("div", { class: "roster-row" },
       el("span", { style: { fontSize: "13px" } }, b.name, b.role === "admin" ? el("span", { class: "role-pill" }, "Admin") : null),
       isAdmin && b.id !== state.profile.id
-        ? el("button", {
-            class: "btn-xs", style: { color: "#fca5a5" },
-            onclick: function () {
-              if (!window.confirm("Kick " + b.name + " off the roster? They'll lose access immediately. This is permanent — they can't sign back in unless you manually give them access again.")) return;
-              deleteProfile(b.id);
-            }
-          }, "Kick")
+        ? el("div", { style: { display: "flex", alignItems: "center", gap: "8px" } },
+            b.role !== "admin"
+              ? el("button", {
+                  class: "btn btn-ghost btn-sm",
+                  onclick: function () { setProfileRole(b.id, "admin"); }
+                }, "Make Admin")
+              : el("button", {
+                  class: "btn-xs",
+                  onclick: function () {
+                    if (!window.confirm("Remove admin privileges from " + b.name + "?")) return;
+                    setProfileRole(b.id, "brother");
+                  }
+                }, "Remove Admin"),
+            el("button", {
+              class: "btn-xs", style: { color: "#fca5a5" },
+              onclick: function () {
+                if (!window.confirm("Kick " + b.name + " off the roster? They'll lose access immediately. This is permanent — they can't sign back in unless you manually give them access again.")) return;
+                deleteProfile(b.id);
+              }
+            }, "Kick")
+          )
         : null
     ));
   });
